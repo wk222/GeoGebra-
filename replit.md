@@ -69,8 +69,9 @@ The backend can optionally use environment variables, but API keys can also be c
 ### Backend
 - Express.js
 - TypeScript
-- OpenAI SDK
-- Anthropic SDK
+- **LangChain 1.0.0-alpha.8** (agent orchestration)
+- **@langchain/openai** (OpenAI integration)
+- **@langchain/anthropic** (Anthropic Claude integration)
 - Puppeteer (for GeoGebra automation)
 - WebSocket (real-time communication)
 - Winston (logging)
@@ -129,7 +130,19 @@ Users can configure their AI provider (OpenAI or Anthropic) directly in the web 
 API keys are stored in browser localStorage for convenience and security.
 
 ## Recent Changes
-- **2025-10-19**: Initial Replit setup
+
+### 2025-10-19 (Latest) - LangChain 1.0 Integration
+- **Upgraded to LangChain 1.0.0-alpha.8** with hybrid architecture:
+  - Uses LangChain.js for model interface (`ChatOpenAI`, `ChatAnthropic`)
+  - Implemented **manual agent loop** for custom OpenAI-compatible API compatibility
+  - Custom API (http://185.183.98.135:3000) doesn't support native tool calling
+  - Solution: Manually check `tool_calls` in responses and execute tools via loop
+- **Architecture Decision**: Hybrid approach balances modern framework with custom API needs
+  - LangChain handles model communication and tool schema
+  - Custom loop in `chat.ts` handles multi-turn tool execution (max 5 iterations)
+  - Maintains compatibility with both standard OpenAI API and custom endpoints
+
+### 2025-10-19 - Initial Replit Setup
   - Configured Vite to use port 5000 with host 0.0.0.0
   - Added allowedHosts: true configuration for Replit proxy support
   - Created workflow to run both frontend and backend in development

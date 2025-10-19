@@ -34,7 +34,7 @@ chatRouter.post('/message', async (req, res) => {
     let finalMessage: Message | null = null;
 
     for (let iteration = 0; iteration < maxIterations; iteration++) {
-      logger.info(`Agent 循环 ${iteration + 1}/${maxIterations}`);
+      logger.info(`🔄 Agent 循环 ${iteration + 1}/${maxIterations}`);
 
       // 调用 AI
       const { message, toolCalls } = await aiService.chat(currentMessages);
@@ -42,7 +42,7 @@ chatRouter.post('/message', async (req, res) => {
 
       // 如果没有工具调用，说明 AI 已经完成任务
       if (!toolCalls || toolCalls.length === 0) {
-        logger.info('AI 没有更多工具调用，循环结束');
+        logger.info('✅ AI 没有更多工具调用，循环结束');
         break;
       }
 
@@ -50,6 +50,7 @@ chatRouter.post('/message', async (req, res) => {
       const toolResults = [];
       for (const toolCall of toolCalls) {
         try {
+          logger.info(`🔧 执行工具: ${toolCall.tool}`, toolCall.parameters);
           const result = await geogebraService.executeTool(toolCall);
           const toolResult = {
             ...toolCall,
@@ -82,7 +83,7 @@ chatRouter.post('/message', async (req, res) => {
       };
       currentMessages.push(toolResultMessage);
 
-      logger.info(`已执行 ${toolResults.length} 个工具，继续下一轮...`);
+      logger.info(`✅ 已执行 ${toolResults.length} 个工具，继续下一轮...`);
     }
 
     // 获取当前画布状态
