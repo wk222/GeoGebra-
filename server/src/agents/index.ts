@@ -1,5 +1,6 @@
 import { agentOrchestrator } from '../services/agent-orchestrator';
 import { GeoGebraAgent } from './geogebra-agent';
+import { GeoGebraCreateAgent } from './geogebra-createagent';
 import { StepSolverAgent } from './step-solver-agent';
 import { ConceptExplainerAgent } from './concept-explainer-agent';
 import { ExerciseGeneratorAgent } from './exercise-generator-agent';
@@ -12,13 +13,14 @@ export function initializeAgents() {
   // 注册所有智能体
   agentOrchestrator.registerAgent(new MathTutorAgent());
   agentOrchestrator.registerAgent(new GeoGebraAgent());
+  agentOrchestrator.registerAgent(new GeoGebraCreateAgent());
   agentOrchestrator.registerAgent(new StepSolverAgent());
   agentOrchestrator.registerAgent(new ConceptExplainerAgent());
   agentOrchestrator.registerAgent(new ExerciseGeneratorAgent());
 
   const agents = agentOrchestrator.getAllAgents();
   logger.info(`✅ 智能体系统初始化完成，共 ${agents.length} 个智能体`);
-  
+
   agents.forEach(agent => {
     logger.info(`   - ${agent.icon} ${agent.name} (${agent.id})`);
   });
