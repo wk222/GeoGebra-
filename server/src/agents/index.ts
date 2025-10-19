@@ -2,6 +2,7 @@ import { agentOrchestrator } from '../services/agent-orchestrator';
 import { GeoGebraAgent } from './geogebra-agent';
 import { StepSolverAgent } from './step-solver-agent';
 import { ConceptExplainerAgent } from './concept-explainer-agent';
+import { ExerciseGeneratorAgent } from './exercise-generator-agent';
 import logger from '../utils/logger';
 
 export function initializeAgents() {
@@ -11,6 +12,7 @@ export function initializeAgents() {
   agentOrchestrator.registerAgent(new GeoGebraAgent());
   agentOrchestrator.registerAgent(new StepSolverAgent());
   agentOrchestrator.registerAgent(new ConceptExplainerAgent());
+  agentOrchestrator.registerAgent(new ExerciseGeneratorAgent());
 
   const agents = agentOrchestrator.getAllAgents();
   logger.info(`✅ 智能体系统初始化完成，共 ${agents.length} 个智能体`);
