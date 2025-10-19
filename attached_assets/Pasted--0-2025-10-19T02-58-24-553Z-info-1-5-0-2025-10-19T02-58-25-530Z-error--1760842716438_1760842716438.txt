@@ -1,0 +1,35 @@
+[0] 2025-10-19T02:58:24.553Z [info]: 🔄 数学教学助手 迭代 [1/5] 
+[0] 2025-10-19T02:58:25.530Z [error]: ❌ 数学教学助手处理失败 400 Invalid schema for function 'geogebra_create_point': In context=(), object schema missing properties. (request id: 20251019105824911163828enxlefzZ) {
+[0]   "status": 400,
+[0]   "headers": {},
+[0]   "requestID": null,
+[0]   "error": {
+[0]     "message": "Invalid schema for function 'geogebra_create_point': In context=(), object schema missing properties. (request id: 20251019105824911163828enxlefzZ)",
+[0]     "type": "openai_error",
+[0]     "param": "",
+[0]     "code": "invalid_function_parameters"
+[0]   },
+[0]   "code": "invalid_function_parameters",
+[0]   "param": "",
+[0]   "type": "openai_error",
+[0]   "attemptNumber": 1,
+[0]   "retriesLeft": 6,
+[0]   "stack": "Error: 400 Invalid schema for function 'geogebra_create_point': In context=(), object schema missing properties. (request id: 20251019105824911163828enxlefzZ)\n    at Function.generate (/home/runner/workspace/node_modules/@langchain/openai/node_modules/openai/src/core/error.ts:72:14)\n    at OpenAI.makeStatusError (/home/runner/workspace/node_modules/@langchain/openai/node_modules/openai/src/client.ts:478:28)\n    at OpenAI.makeRequest (/home/runner/workspace/node_modules/@langchain/openai/node_modules/openai/src/client.ts:728:24)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at /home/runner/workspace/node_modules/@langchain/openai/src/chat_models.ts:2404:18\n    at RetryOperation._fn (/home/runner/workspace/node_modules/p-retry/index.js:50:12)"
+[0] }
+[0] 2025-10-19T02:58:25.531Z [error]: ❌ 聊天请求失败 400 Invalid schema for function 'geogebra_create_point': In context=(), object schema missing properties. (request id: 20251019105824911163828enxlefzZ) {
+[0]   "status": 400,
+[0]   "headers": {},
+[0]   "requestID": null,
+[0]   "error": {
+[0]     "message": "Invalid schema for function 'geogebra_create_point': In context=(), object schema missing properties. (request id: 20251019105824911163828enxlefzZ)",
+[0]     "type": "openai_error",
+[0]     "param": "",
+[0]     "code": "invalid_function_parameters"
+[0]   },
+[0]   "code": "invalid_function_parameters",
+[0]   "param": "",
+[0]   "type": "openai_error",
+[0]   "attemptNumber": 1,
+[0]   "retriesLeft": 6,
+[0]   "stack": "Error: 400 Invalid schema for function 'geogebra_create_point': In context=(), object schema missing properties. (request id: 20251019105824911163828enxlefzZ)\n    at Function.generate (/home/runner/workspace/node_modules/@langchain/openai/node_modules/openai/src/core/error.ts:72:14)\n    at OpenAI.makeStatusError (/home/runner/workspace/node_modules/@langchain/openai/node_modules/openai/src/client.ts:478:28)\n    at OpenAI.makeRequest (/home/runner/workspace/node_modules/@langchain/openai/node_modules/openai/src/client.ts:728:24)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at /home/runner/workspace/node_modules/@langchain/openai/src/chat_models.ts:2404:18\n    at RetryOperation._fn (/home/runner/workspace/node_modules/p-retry/index.js:50:12)"
+[0] }

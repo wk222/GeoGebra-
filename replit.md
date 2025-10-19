@@ -79,10 +79,12 @@ The backend can optionally use environment variables, but API keys can also be c
 - Winston (logging)
 
 ## Features
-- **多智能体架构** - 3个专业化AI助手：
-  - 📊 GeoGebra可视化助手 - 创建数学图形和可视化
+- **多智能体架构** - 5个专业化AI助手：
+  - 🎓 数学教学助手 - 全能助手：生成练习题 + GeoGebra 可视化（推荐）
+  - 📊 GeoGebra可视化助手 - 专注创建数学图形和可视化
   - 🧮 解题步骤分解器 - 将复杂问题分解成详细步骤
   - 📖 概念解释专家 - 用通俗语言解释数学概念
+  - 📝 练习题生成器 - 生成纯文本练习题
 - AI-powered math tutoring with OpenAI GPT or Anthropic Claude (including custom API support)
 - Real-time GeoGebra visualization with multi-round tool calling
 - Natural language interface for creating mathematical diagrams
@@ -137,7 +139,26 @@ API keys are stored in browser localStorage for convenience and security.
 
 ## Recent Changes
 
-### 2025-10-19 (Latest) - Multi-Agent Architecture Implementation
+### 2025-10-19 (Latest) - Math Tutor Agent + LaTeX Rendering
+- **Created Math Tutor Agent** (`math-tutor-agent.ts`)
+  - All-in-one agent: Exercise generation + GeoGebra visualization
+  - Uses proven tool-calling pattern from GeoGebra Agent
+  - Avoids API compatibility issues with custom API
+  - Supports 7 GeoGebra tools for automatic visualization
+- **Added LaTeX rendering support**
+  - Installed: `react-markdown`, `remark-math`, `rehype-katex`, `katex`
+  - Modified `MessageItem.tsx` to render LaTeX in AI messages
+  - Supports inline ($...$) and display ($$...$$) math formulas
+  - Full Markdown support: headings, lists, code blocks, details/summary
+- **Exercise Generator reverted to text-only**
+  - No tool calling to avoid custom API format issues
+  - Focuses on generating well-formatted exercise text
+- **Frontend updates**
+  - Math Tutor agent shows GeoGebra panel
+  - LaTeX formulas render beautifully
+  - Collapsible answers using details/summary tags
+
+### 2025-10-19 - Multi-Agent Architecture Implementation
 - **Created multi-agent system** with AgentOrchestrator pattern
   - Base `Agent` class with standard interface (`chat()`, `getConfig()`)
   - Agent registry and orchestration in `agent-orchestrator.ts`

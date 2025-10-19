@@ -16,8 +16,8 @@ const App: React.FC = () => {
     }
   }, [aiConfig]);
 
-  // 只有 GeoGebra 智能体才显示画板
-  const showGeoGebra = selectedAgentId === 'geogebra';
+  // GeoGebra 智能体和数学教学助手显示画板
+  const showGeoGebra = selectedAgentId === 'geogebra' || selectedAgentId === 'math-tutor';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>

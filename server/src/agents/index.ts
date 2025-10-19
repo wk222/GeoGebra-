@@ -3,12 +3,14 @@ import { GeoGebraAgent } from './geogebra-agent';
 import { StepSolverAgent } from './step-solver-agent';
 import { ConceptExplainerAgent } from './concept-explainer-agent';
 import { ExerciseGeneratorAgent } from './exercise-generator-agent';
+import { MathTutorAgent } from './math-tutor-agent';
 import logger from '../utils/logger';
 
 export function initializeAgents() {
   logger.info('🤖 初始化智能体系统...');
 
   // 注册所有智能体
+  agentOrchestrator.registerAgent(new MathTutorAgent());
   agentOrchestrator.registerAgent(new GeoGebraAgent());
   agentOrchestrator.registerAgent(new StepSolverAgent());
   agentOrchestrator.registerAgent(new ConceptExplainerAgent());

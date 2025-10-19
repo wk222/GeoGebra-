@@ -1,0 +1,38 @@
+[0] }
+[0] 2025-10-19T02:53:00.186Z [info]: 📝 练习题生成器智能体开始处理（支持 GeoGebra 可视化）... 
+[0] 2025-10-19T02:53:00.189Z [info]: 🔄 迭代 1/5 
+[0] 2025-10-19T02:53:01.171Z [error]: ❌ 练习题生成器智能体处理失败 400 Invalid value: ''. Supported values are: 'function' and 'custom'. (request id: 20251019105300553525654KnRzzlli) {
+[0]   "status": 400,
+[0]   "headers": {},
+[0]   "requestID": null,
+[0]   "error": {
+[0]     "message": "Invalid value: ''. Supported values are: 'function' and 'custom'. (request id: 20251019105300553525654KnRzzlli)",
+[0]     "type": "openai_error",
+[0]     "param": "",
+[0]     "code": "invalid_value"
+[0]   },
+[0]   "code": "invalid_value",
+[0]   "param": "",
+[0]   "type": "openai_error",
+[0]   "attemptNumber": 1,
+[0]   "retriesLeft": 6,
+[0]   "stack": "Error: 400 Invalid value: ''. Supported values are: 'function' and 'custom'. (request id: 20251019105300553525654KnRzzlli)\n    at Function.generate (/home/runner/workspace/node_modules/@langchain/openai/node_modules/openai/src/core/error.ts:72:14)\n    at OpenAI.makeStatusError (/home/runner/workspace/node_modules/@langchain/openai/node_modules/openai/src/client.ts:478:28)\n    at OpenAI.makeRequest (/home/runner/workspace/node_modules/@langchain/openai/node_modules/openai/src/client.ts:728:24)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at /home/runner/workspace/node_modules/@langchain/openai/src/chat_models.ts:2404:18\n    at RetryOperation._fn (/home/runner/workspace/node_modules/p-retry/index.js:50:12)"
+[0] }
+[0] 2025-10-19T02:53:01.171Z [error]: ❌ 聊天请求失败 400 Invalid value: ''. Supported values are: 'function' and 'custom'. (request id: 20251019105300553525654KnRzzlli) {
+[0]   "status": 400,
+[0]   "headers": {},
+[0]   "requestID": null,
+[0]   "error": {
+[0]     "message": "Invalid value: ''. Supported values are: 'function' and 'custom'. (request id: 20251019105300553525654KnRzzlli)",
+[0]     "type": "openai_error",
+[0]     "param": "",
+[0]     "code": "invalid_value"
+[0]   },
+[0]   "code": "invalid_value",
+[0]   "param": "",
+[0]   "type": "openai_error",
+[0]   "attemptNumber": 1,
+[0]   "retriesLeft": 6,
+[0]   "stack": "Error: 400 Invalid value: ''. Supported values are: 'function' and 'custom'. (request id: 20251019105300553525654KnRzzlli)\n    at Function.generate (/home/runner/workspace/node_modules/@langchain/openai/node_modules/openai/src/core/error.ts:72:14)\n    at OpenAI.makeStatusError (/home/runner/workspace/node_modules/@langchain/openai/node_modules/openai/src/client.ts:478:28)\n    at OpenAI.makeRequest (/home/runner/workspace/node_modules/@langchain/openai/node_modules/openai/src/client.ts:728:24)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at /home/runner/workspace/node_modules/@langchain/openai/src/chat_models.ts:2404:18\n    at RetryOperation._fn (/home/runner/workspace/node_modules/p-retry/index.js:50:12)"
+[0] }
+^C[0] 2025-10-19T02:53:12.748Z [info]: 收到 SIGINT 信号，正在关闭服务器..
