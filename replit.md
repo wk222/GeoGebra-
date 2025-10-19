@@ -21,8 +21,10 @@ This is a monorepo with frontend and backend:
 │   └── vite.config.ts   # Vite configuration (port 5000)
 ├── server/              # Backend - Express + TypeScript
 │   ├── src/
+│   │   ├── agents/      # Multi-agent system (geogebra, step-solver, concept-explainer)
 │   │   ├── routes/      # API routes (chat, geogebra, config)
-│   │   ├── services/    # AI and GeoGebra services
+│   │   ├── services/    # AI, GeoGebra, and agent orchestration services
+│   │   ├── types/       # TypeScript type definitions
 │   │   ├── utils/       # Logger and utilities
 │   │   └── index.ts     # Server entry point (port 3001)
 └── package.json         # Root workspace configuration
@@ -77,12 +79,16 @@ The backend can optionally use environment variables, but API keys can also be c
 - Winston (logging)
 
 ## Features
-- AI-powered math tutoring with OpenAI GPT or Anthropic Claude
-- Real-time GeoGebra visualization
+- **多智能体架构** - 3个专业化AI助手：
+  - 📊 GeoGebra可视化助手 - 创建数学图形和可视化
+  - 🧮 解题步骤分解器 - 将复杂问题分解成详细步骤
+  - 📖 概念解释专家 - 用通俗语言解释数学概念
+- AI-powered math tutoring with OpenAI GPT or Anthropic Claude (including custom API support)
+- Real-time GeoGebra visualization with multi-round tool calling
 - Natural language interface for creating mathematical diagrams
 - Session management
 - Export GeoGebra graphics as PNG
-- Support for points, lines, circles, polygons, functions, and custom commands
+- Support for points, lines, circles, polygons, functions, integrals, and custom commands
 
 ## Development Notes
 
@@ -131,7 +137,29 @@ API keys are stored in browser localStorage for convenience and security.
 
 ## Recent Changes
 
-### 2025-10-19 (Latest) - LangChain 1.0 Integration
+### 2025-10-19 (Latest) - Multi-Agent Architecture Implementation
+- **Created multi-agent system** with AgentOrchestrator pattern
+  - Base `Agent` class with standard interface (`chat()`, `getConfig()`)
+  - Agent registry and orchestration in `agent-orchestrator.ts`
+  - Three specialized agents:
+    1. **GeoGebra Agent** (`geogebra-agent.ts`) - Math visualization with 7 tools
+    2. **Step Solver Agent** (`step-solver-agent.ts`) - Problem decomposition (text-only)
+    3. **Concept Explainer Agent** (`concept-explainer-agent.ts`) - Concept explanation (text-only)
+- **Frontend agent selector**
+  - `AgentSelector` component with visual card-based UI
+  - Zustand store integration for agent selection state
+  - API service updated to pass `agentId` parameter
+  - Dynamic placeholder text based on selected agent
+- **API updates**
+  - New endpoint: `GET /api/chat/agents` returns available agents
+  - Modified `POST /api/chat/message` accepts `agentId` parameter
+  - Agent-specific responses (GeoGebra objects only for GeoGebra agent)
+- **Architecture benefits**
+  - Clean separation of concerns (each agent has specific expertise)
+  - Easy to add new agents (just extend base class and register)
+  - Maintains LangChain 1.0 compatibility with custom loop
+
+### 2025-10-19 - LangChain 1.0 Integration
 - **Upgraded to LangChain 1.0.0-alpha.8** with hybrid architecture:
   - Uses LangChain.js for model interface (`ChatOpenAI`, `ChatAnthropic`)
   - Implemented **manual agent loop** for custom OpenAI-compatible API compatibility
