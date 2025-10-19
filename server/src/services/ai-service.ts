@@ -1,6 +1,7 @@
 import { generateText, tool } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import logger from '../utils/logger';
 import { AIConfig, Message, ToolCall } from '../types';
 import { geogebraTools } from './geogebra-tools';
@@ -31,7 +32,15 @@ export class AIService {
     for (const t of geogebraTools) {
       logger.info(`创建工具: ${t.name}`);
 
-      // 直接使用 Zod schemas
+      // 使用 zodToJsonSchema 将 Zod schema 转换为 JSON Schema
+      // 这对于自定义 API provider 是必需的
+      const jsonSchema = zodToJsonSchema(t.parameters, { $refStrategy: 'none' });
+      
+      // 移除顶层的 $schema 和 definitions 字段
+      const { $schema, definitions, additionalProperties, ...schema } = jsonSchema as any;
+      
+      logger.info(`工具 ${t.name} 的 schema:`, JSON.stringify(schema, null, 2));
+
       tools[t.name] = tool({
         description: t.description,
         parameters: t.parameters,
