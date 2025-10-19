@@ -1,0 +1,63 @@
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { createServer } from 'http';
+import { WebSocketServer } from 'ws';
+import logger from './utils/logger';
+import { chatRouter } from './routes/chat';
+import { geogebraRouter } from './routes/geogebra';
+import { configRouter } from './routes/config';
+import { setupWebSocket } from './websocket';
+
+// 加载环境变量
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// 中间件
+app.use(cors());
+app.use(express.json());
+
+// 路由
+app.use('/api/chat', chatRouter);
+app.use('/api/geogebra', geogebraRouter);
+app.use('/api/config', configRouter);
+
+// 健康检查
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// 创建 HTTP 服务器和 WebSocket 服务器
+const server = createServer(app);
+const wss = new WebSocketServer({ server, path: '/ws' });
+
+// 设置 WebSocket
+setupWebSocket(wss);
+
+// 启动服务器
+server.listen(PORT, () => {
+  logger.info(`🚀 服务器启动成功！`);
+  logger.info(`📡 HTTP 服务: http://localhost:${PORT}`);
+  logger.info(`🔌 WebSocket: ws://localhost:${PORT}/ws`);
+  logger.info(`🌍 环境: ${process.env.NODE_ENV || 'development'}`);
+});
+
+// 优雅关闭
+process.on('SIGTERM', () => {
+  logger.info('收到 SIGTERM 信号，正在关闭服务器...');
+  server.close(() => {
+    logger.info('服务器已关闭');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  logger.info('收到 SIGINT 信号，正在关闭服务器...');
+  server.close(() => {
+    logger.info('服务器已关闭');
+    process.exit(0);
+  });
+});
+
