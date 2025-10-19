@@ -1,6 +1,5 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 import logger from '../utils/logger';
 import { AIConfig, Message, ToolCall } from '../types';
 import { geogebraTools } from './geogebra-tools';
@@ -34,21 +33,70 @@ export class AIService {
     throw new Error(`不支持的 AI 提供商: ${this.config.provider}`);
   }
 
+  private zodToOpenAISchema(zodSchema: any): any {
+    // 手动从 Zod schema 提取信息并转换为 OpenAI 格式
+    const shape = zodSchema._def.shape();
+    const properties: any = {};
+    const required: string[] = [];
+
+    for (const [key, value] of Object.entries(shape)) {
+      const zodField: any = value;
+      const fieldDef: any = {
+        type: this.getJsonType(zodField),
+      };
+
+      // 提取描述
+      if (zodField._def.description) {
+        fieldDef.description = zodField._def.description;
+      }
+
+      // 处理数组类型
+      if (zodField._def.typeName === 'ZodArray') {
+        fieldDef.type = 'array';
+        fieldDef.items = { type: this.getJsonType(zodField._def.type) };
+      }
+
+      properties[key] = fieldDef;
+
+      // 检查是否必填
+      if (!zodField.isOptional()) {
+        required.push(key);
+      }
+    }
+
+    return {
+      type: 'object',
+      properties,
+      required,
+    };
+  }
+
+  private getJsonType(zodType: any): string {
+    const typeName = zodType._def.typeName;
+    switch (typeName) {
+      case 'ZodString':
+        return 'string';
+      case 'ZodNumber':
+        return 'number';
+      case 'ZodBoolean':
+        return 'boolean';
+      case 'ZodArray':
+        return 'array';
+      case 'ZodObject':
+        return 'object';
+      default:
+        return 'string';
+    }
+  }
+
   private getToolDefinitions() {
     const toolDefs: any[] = [];
     
     for (const t of geogebraTools) {
       logger.info(`创建工具定义: ${t.name}`);
 
-      // 使用 zodToJsonSchema 将 Zod schema 转换为 JSON Schema
-      const jsonSchema: any = zodToJsonSchema(t.parameters as any, { 
-        $refStrategy: 'none',
-        target: 'openApi3'
-      });
-      
-      // 提取 properties 和 required 字段
-      const properties = jsonSchema.properties || {};
-      const required = jsonSchema.required || [];
+      // 手动转换 Zod schema 为 JSON Schema
+      const parameters = this.zodToOpenAISchema(t.parameters);
       
       // 构建符合 OpenAI 格式的工具定义
       const toolDef = {
@@ -56,11 +104,7 @@ export class AIService {
         function: {
           name: t.name,
           description: t.description,
-          parameters: {
-            type: 'object' as const,
-            properties,
-            required,
-          }
+          parameters,
         }
       };
       
