@@ -1,6 +1,10 @@
 import React from 'react';
 import { User, Bot, Wrench, AlertCircle } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { Message } from '../types';
+import 'katex/dist/katex.min.css';
 
 interface MessageItemProps {
   message: Message;
@@ -69,16 +73,117 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
             boxShadow: isUser ? 'none' : 'var(--shadow)',
           }}
         >
-          <p
+          <div
+            className="message-content"
             style={{
-              margin: 0,
               lineHeight: 1.6,
-              whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
             }}
           >
-            {message.content}
-          </p>
+            {isUser ? (
+              // 用户消息：简单文本
+              <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                {message.content}
+              </p>
+            ) : (
+              // AI 消息：支持 Markdown 和 LaTeX
+              <ReactMarkdown
+                remarkPlugins={[remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+                components={{
+                  // 自定义代码块样式
+                  code: ({node, className, children, ...props}: any) => {
+                    const inline = !className;
+                    return inline ? (
+                      <code
+                        style={{
+                          backgroundColor: 'var(--background)',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontSize: '0.9em',
+                          fontFamily: 'monospace',
+                        }}
+                        {...props}
+                      >
+                        {children}
+                      </code>
+                    ) : (
+                      <pre
+                        style={{
+                          backgroundColor: 'var(--background)',
+                          padding: '12px',
+                          borderRadius: '6px',
+                          overflow: 'auto',
+                          fontSize: '0.9em',
+                        }}
+                      >
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      </pre>
+                    );
+                  },
+                  // 自定义列表样式
+                  ul: ({children}) => (
+                    <ul style={{ paddingLeft: '1.5em', margin: '0.5em 0' }}>
+                      {children}
+                    </ul>
+                  ),
+                  ol: ({children}) => (
+                    <ol style={{ paddingLeft: '1.5em', margin: '0.5em 0' }}>
+                      {children}
+                    </ol>
+                  ),
+                  // 自定义标题样式
+                  h1: ({children}) => (
+                    <h1 style={{ fontSize: '1.5em', marginTop: '1em', marginBottom: '0.5em' }}>
+                      {children}
+                    </h1>
+                  ),
+                  h2: ({children}) => (
+                    <h2 style={{ fontSize: '1.3em', marginTop: '0.8em', marginBottom: '0.4em' }}>
+                      {children}
+                    </h2>
+                  ),
+                  h3: ({children}) => (
+                    <h3 style={{ fontSize: '1.1em', marginTop: '0.6em', marginBottom: '0.3em' }}>
+                      {children}
+                    </h3>
+                  ),
+                  // 自定义段落样式
+                  p: ({children}) => (
+                    <p style={{ margin: '0.5em 0' }}>
+                      {children}
+                    </p>
+                  ),
+                  // 自定义 details 标签
+                  details: ({children}) => (
+                    <details style={{ 
+                      margin: '0.5em 0',
+                      padding: '8px',
+                      backgroundColor: 'var(--background)',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border)'
+                    }}>
+                      {children}
+                    </details>
+                  ),
+                  summary: ({children}) => (
+                    <summary style={{ 
+                      cursor: 'pointer',
+                      fontWeight: '500',
+                      padding: '4px',
+                      userSelect: 'none'
+                    }}>
+                      {children}
+                    </summary>
+                  ),
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+            )}
+          </div>
 
           {/* 工具调用 */}
           {message.toolCalls && message.toolCalls.length > 0 && (
@@ -126,4 +231,3 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
     </div>
   );
 };
-
