@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Message, AIConfig, GeoGebraObject } from '../types';
+import { AgentConfig } from '../types/agent';
 
 const api = axios.create({
   baseURL: '/api',
@@ -7,19 +8,27 @@ const api = axios.create({
 });
 
 export const chatAPI = {
+  getAgents: async (): Promise<{ agents: AgentConfig[] }> => {
+    const response = await api.get('/chat/agents');
+    return response.data;
+  },
+
   sendMessage: async (
     messages: Message[],
     config: AIConfig,
-    sessionId: string
+    sessionId: string,
+    agentId?: string
   ): Promise<{
     message: Message;
     toolCalls?: any[];
     objects?: GeoGebraObject[];
+    agentId?: string;
   }> => {
     const response = await api.post('/chat/message', {
       messages,
       config,
       sessionId,
+      agentId,
     });
     return response.data;
   },

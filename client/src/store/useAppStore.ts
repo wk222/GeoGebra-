@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Message, AIConfig, GeoGebraObject } from '../types';
+import { AgentConfig } from '../types/agent';
 
 // 简单的 UUID 生成函数（避免引入 uuid 包）
 function generateId() {
@@ -15,6 +16,10 @@ interface AppState {
   // AI 配置
   aiConfig: AIConfig | null;
   
+  // 智能体相关
+  agents: AgentConfig[];
+  selectedAgentId: string;
+  
   // GeoGebra 相关
   geogebraObjects: GeoGebraObject[];
   
@@ -24,6 +29,8 @@ interface AppState {
   clearMessages: () => void;
   setLoading: (loading: boolean) => void;
   setAIConfig: (config: AIConfig) => void;
+  setAgents: (agents: AgentConfig[]) => void;
+  setSelectedAgent: (agentId: string) => void;
   setGeoGebraObjects: (objects: GeoGebraObject[]) => void;
   newSession: () => void;
 }
@@ -57,6 +64,8 @@ export const useAppStore = create<AppState>((set) => ({
   sessionId: generateId(),
   isLoading: false,
   aiConfig: loadConfig(),
+  agents: [],
+  selectedAgentId: 'geogebra',
   geogebraObjects: [],
 
   // Actions
@@ -82,6 +91,10 @@ export const useAppStore = create<AppState>((set) => ({
     saveConfig(config);
     set({ aiConfig: config });
   },
+
+  setAgents: (agents) => set({ agents }),
+
+  setSelectedAgent: (agentId) => set({ selectedAgentId: agentId }),
 
   setGeoGebraObjects: (objects) => set({ geogebraObjects: objects }),
 

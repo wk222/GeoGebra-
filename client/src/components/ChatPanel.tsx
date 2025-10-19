@@ -4,6 +4,7 @@ import { useAppStore } from '../store/useAppStore';
 import { chatAPI } from '../services/api';
 import { Message } from '../types';
 import { MessageItem } from './MessageItem';
+import { AgentSelector } from './AgentSelector';
 
 // 获取全局 GeoGebra 应用实例
 const getGeoGebraApp = (): any => {
@@ -22,9 +23,26 @@ export const ChatPanel: React.FC = () => {
     isLoading,
     sessionId,
     aiConfig,
+    agents,
+    selectedAgentId,
     addMessage,
     setLoading,
+    setAgents,
+    setSelectedAgent,
   } = useAppStore();
+
+  // 加载智能体列表
+  useEffect(() => {
+    const loadAgents = async () => {
+      try {
+        const { agents: availableAgents } = await chatAPI.getAgents();
+        setAgents(availableAgents);
+      } catch (error) {
+        console.error('加载智能体列表失败:', error);
+      }
+    };
+    loadAgents();
+  }, [setAgents]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -48,7 +66,8 @@ export const ChatPanel: React.FC = () => {
       const response = await chatAPI.sendMessage(
         [...messages, userMessage],
         aiConfig,
-        sessionId
+        sessionId,
+        selectedAgentId
       );
 
       addMessage({
@@ -124,22 +143,11 @@ export const ChatPanel: React.FC = () => {
 
   if (!aiConfig) {
     return (
-      <div
-        style={{
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px',
-          textAlign: 'center',
-        }}
-      >
-        <div>
-          <h2 style={{ marginBottom: '12px', color: 'var(--text-secondary)' }}>
-            请先配置 AI API
-          </h2>
-          <p style={{ color: 'var(--text-secondary)' }}>
-            点击右上角的设置按钮配置 OpenAI 或 Anthropic API
+      <div className="chat-panel">
+        <div className="empty-state">
+          <p>请先配置 API 密钥</p>
+          <p style={{ fontSize: '0.875rem', color: '#6c757d', marginTop: '0.5rem' }}>
+            点击右上角的设置图标进行配置
           </p>
         </div>
       </div>
@@ -147,105 +155,154 @@ export const ChatPanel: React.FC = () => {
   }
 
   return (
-    <div
-      style={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: 'var(--surface)',
-      }}
-    >
+    <div className="chat-panel">
+      {/* 智能体选择器 */}
+      {agents.length > 0 && (
+        <AgentSelector
+          agents={agents}
+          selectedAgentId={selectedAgentId}
+          onSelectAgent={setSelectedAgent}
+        />
+      )}
+
       {/* 消息列表 */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '20px',
-        }}
-      >
+      <div className="messages">
         {messages.length === 0 ? (
-          <div
-            style={{
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              textAlign: 'center',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <div>
-              <h3 style={{ marginBottom: '8px' }}>开始对话</h3>
-              <p>问我任何数学问题，我会用 GeoGebra 帮你可视化！</p>
-            </div>
+          <div className="empty-state">
+            <h3>👋 你好！我是数学助手</h3>
+            <p>我可以帮你：</p>
+            <ul style={{ textAlign: 'left', marginTop: '1rem' }}>
+              <li>📊 创建数学可视化（GeoGebra）</li>
+              <li>🧮 分解解题步骤</li>
+              <li>📖 解释数学概念</li>
+            </ul>
+            <p style={{ marginTop: '1rem', fontSize: '0.875rem', color: '#6c757d' }}>
+              选择上方的助手，然后开始提问吧！
+            </p>
           </div>
         ) : (
-          <>
-            {messages.map((message) => (
-              <MessageItem key={message.id} message={message} />
-            ))}
-            <div ref={messagesEndRef} />
-          </>
+          messages.map((msg) => <MessageItem key={msg.id} message={msg} />)
         )}
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* 输入区域 */}
-      <div
-        style={{
-          borderTop: '1px solid var(--border)',
-          padding: '16px',
-          backgroundColor: 'var(--background)',
-        }}
-      >
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="输入数学问题... (Shift+Enter 换行)"
-            disabled={isLoading}
-            style={{
-              flex: 1,
-              padding: '12px',
-              borderRadius: '8px',
-              border: '1px solid var(--border)',
-              resize: 'none',
-              minHeight: '60px',
-              maxHeight: '120px',
-              fontSize: '14px',
-            }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={isLoading || !input.trim()}
-            style={{
-              padding: '12px 20px',
-              borderRadius: '8px',
-              backgroundColor: isLoading ? 'var(--text-secondary)' : 'var(--primary)',
-              color: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '14px',
-              fontWeight: '500',
-              opacity: !input.trim() || isLoading ? 0.5 : 1,
-            }}
-          >
-            {isLoading ? (
-              <>
-                <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                思考中...
-              </>
-            ) : (
-              <>
-                <Send size={16} />
-                发送
-              </>
-            )}
-          </button>
-        </div>
+      {/* 输入框 */}
+      <div className="input-area">
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder={
+            agents.find(a => a.id === selectedAgentId)
+              ? `向 ${agents.find(a => a.id === selectedAgentId)?.name} 提问...`
+              : '输入消息...'
+          }
+          disabled={isLoading}
+          rows={3}
+        />
+        <button onClick={handleSend} disabled={isLoading || !input.trim()}>
+          {isLoading ? <Loader2 className="icon-spin" /> : <Send />}
+        </button>
       </div>
+
+      <style>{`
+        .chat-panel {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          background: white;
+        }
+
+        .empty-state {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem;
+          color: #6c757d;
+          text-align: center;
+        }
+
+        .empty-state h3 {
+          margin-bottom: 1rem;
+          color: #212529;
+        }
+
+        .empty-state ul {
+          list-style: none;
+          padding: 0;
+        }
+
+        .empty-state li {
+          margin: 0.5rem 0;
+          padding: 0.5rem;
+          background: #f8f9fa;
+          border-radius: 4px;
+        }
+
+        .messages {
+          flex: 1;
+          overflow-y: auto;
+          padding: 1rem;
+        }
+
+        .input-area {
+          display: flex;
+          gap: 0.5rem;
+          padding: 1rem;
+          border-top: 1px solid #dee2e6;
+          background: #f8f9fa;
+        }
+
+        .input-area textarea {
+          flex: 1;
+          padding: 0.75rem;
+          border: 1px solid #ced4da;
+          border-radius: 8px;
+          font-family: inherit;
+          font-size: 0.938rem;
+          resize: none;
+        }
+
+        .input-area textarea:focus {
+          outline: none;
+          border-color: #007bff;
+        }
+
+        .input-area textarea:disabled {
+          background: #e9ecef;
+          cursor: not-allowed;
+        }
+
+        .input-area button {
+          padding: 0.75rem 1.5rem;
+          background: #007bff;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+
+        .input-area button:hover:not(:disabled) {
+          background: #0056b3;
+        }
+
+        .input-area button:disabled {
+          background: #6c757d;
+          cursor: not-allowed;
+        }
+
+        .icon-spin {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 };
-
