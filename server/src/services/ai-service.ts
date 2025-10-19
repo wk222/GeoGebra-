@@ -1,67 +1,88 @@
-import { generateText, tool, jsonSchema } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
-import { createAnthropic } from '@ai-sdk/anthropic';
+import { ChatOpenAI } from '@langchain/openai';
+import { ChatAnthropic } from '@langchain/anthropic';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import logger from '../utils/logger';
 import { AIConfig, Message, ToolCall } from '../types';
 import { geogebraTools } from './geogebra-tools';
+import { v4 as uuidv4 } from 'uuid';
 
 export class AIService {
   constructor(private config: AIConfig) {}
 
   private getModel() {
     if (this.config.provider === 'openai' || this.config.provider === 'custom') {
-      const openai = createOpenAI({
+      return new ChatOpenAI({
         apiKey: this.config.apiKey,
-        baseURL: this.config.baseURL,
+        configuration: {
+          baseURL: this.config.baseURL,
+        },
+        model: this.config.model || 'gpt-4-turbo-preview',
+        temperature: 0.7,
       });
-      return openai(this.config.model || 'gpt-4-turbo-preview');
     } else if (this.config.provider === 'anthropic') {
-      const anthropic = createAnthropic({
+      return new ChatAnthropic({
         apiKey: this.config.apiKey,
-        baseURL: this.config.baseURL,
+        anthropicApiUrl: this.config.baseURL,
+        model: this.config.model || 'claude-3-5-sonnet-20241022',
+        temperature: 0.7,
       });
-      return anthropic(this.config.model || 'claude-3-5-sonnet-20241022');
     }
     throw new Error(`不支持的 AI 提供商: ${this.config.provider}`);
   }
 
-  private getTools() {
-    const tools: Record<string, any> = {};
+  private getToolDefinitions() {
+    const toolDefs: any[] = [];
     
     for (const t of geogebraTools) {
-      logger.info(`创建工具: ${t.name}`);
+      logger.info(`创建工具定义: ${t.name}`);
 
       // 使用 zodToJsonSchema 将 Zod schema 转换为 JSON Schema
-      // 这对于自定义 API provider 是必需的
-      const convertedSchema = zodToJsonSchema(t.parameters, { $refStrategy: 'none' });
+      const jsonSchema: any = zodToJsonSchema(t.parameters as any, { 
+        $refStrategy: 'none',
+        target: 'openApi3'
+      });
       
-      // 移除顶层的 $schema 和 definitions 字段，只保留核心的 object schema
-      const { $schema, definitions, ...coreSchema } = convertedSchema as any;
+      // 提取 properties 和 required 字段
+      const properties = jsonSchema.properties || {};
+      const required = jsonSchema.required || [];
       
-      logger.info(`工具 ${t.name} 的 schema:`, JSON.stringify(coreSchema, null, 2));
-
-      // 使用 jsonSchema() 包装转换后的 JSON Schema
-      tools[t.name] = tool({
-        description: t.description,
-        parameters: jsonSchema(coreSchema),
-      } as any);
+      // 构建符合 OpenAI 格式的工具定义
+      const toolDef = {
+        type: 'function' as const,
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: {
+            type: 'object' as const,
+            properties,
+            required,
+          }
+        }
+      };
+      
+      logger.info(`工具 ${t.name} 的定义:`, JSON.stringify(toolDef, null, 2));
+      toolDefs.push(toolDef);
     }
     
-    logger.info(`共创建 ${Object.keys(tools).length} 个工具`);
-    return tools;
+    logger.info(`共创建 ${toolDefs.length} 个工具定义`);
+    return toolDefs;
   }
 
   async chat(messages: Message[]): Promise<{ message: Message; toolCalls: ToolCall[] }> {
     try {
       const model = this.getModel();
-      const tools = this.getTools();
+      const tools = this.getToolDefinitions();
       
-      // 格式化消息
-      const formattedMessages = messages.map(msg => ({
-        role: msg.role as 'user' | 'assistant' | 'system',
-        content: msg.content,
-      }));
+      // 格式化消息为 LangChain 格式
+      const formattedMessages: any[] = messages.map(msg => {
+        if (msg.role === 'system') {
+          return { role: 'system', content: msg.content };
+        } else if (msg.role === 'user') {
+          return { role: 'user', content: msg.content };
+        } else {
+          return { role: 'assistant', content: msg.content };
+        }
+      });
 
       // 如果没有系统消息，添加默认的
       if (!messages.some(msg => msg.role === 'system')) {
@@ -77,56 +98,60 @@ export class AIService {
         messageCount: formattedMessages.length 
       });
 
-      let result;
-      try {
-        // 使用类型断言绕过 maxSteps 的类型检查问题
-        result = await generateText({
-          model,
-          messages: formattedMessages,
-          tools,
-          maxSteps: 5, // 允许最多5步工具调用
-        } as any);
-      } catch (err) {
-        logger.error('调用 AI 接口失败', err);
-        throw err;
-      }
-
-      logger.info('AI 对话完成', { 
-        text: result.text?.substring(0, 100)
+      // 调用模型时传入工具定义
+      const response = await (model as any).invoke(formattedMessages, {
+        tools: tools,
+      });
+      
+      logger.info('AI 响应成功', {
+        hasToolCalls: !!(response.additional_kwargs?.tool_calls?.length),
+        toolCallsCount: response.additional_kwargs?.tool_calls?.length || 0,
       });
 
-      // 从结果中提取所有工具调用
+      // 提取工具调用
       const toolCalls: ToolCall[] = [];
-      // @ts-ignore - steps 字段在运行时存在
-      if (result.toolCalls && Array.isArray(result.toolCalls)) {
-        for (const toolCall of result.toolCalls) {
-          const params = (toolCall as any).args || {};
-          toolCalls.push({
-            id: (toolCall as any).toolCallId || `call-${Date.now()}`,
-            type: 'geogebra',
-            tool: (toolCall as any).toolName || '',
-            parameters: params,
-          });
-          logger.info(`工具调用: ${(toolCall as any).toolName}`, params);
+      if (response.additional_kwargs?.tool_calls) {
+        for (const tc of response.additional_kwargs.tool_calls) {
+          try {
+            const args = typeof tc.function.arguments === 'string' 
+              ? JSON.parse(tc.function.arguments) 
+              : tc.function.arguments;
+            
+            toolCalls.push({
+              id: tc.id || uuidv4(),
+              type: 'geogebra',
+              tool: tc.function.name,
+              parameters: args,
+            });
+            
+            logger.info(`工具调用: ${tc.function.name}`, args);
+          } catch (error) {
+            logger.error(`解析工具调用参数失败:`, error);
+          }
         }
       }
 
+      // 构建返回消息
       const assistantMessage: Message = {
-        id: `msg-${Date.now()}`,
+        id: uuidv4(),
         role: 'assistant',
-        content: result.text || '',
+        content: response.content as string || '',
         timestamp: new Date(),
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       };
 
-      return { message: assistantMessage, toolCalls };
-    } catch (error) {
-      logger.error('AI 聊天失败', error);
+      return {
+        message: assistantMessage,
+        toolCalls,
+      };
+
+    } catch (error: any) {
+      logger.error('AI 聊天失败', error.message || error, {
+        name: error.name,
+        stack: error.stack,
+      });
       throw error;
     }
-  }
-
-  updateConfig(config: AIConfig) {
-    this.config = config;
   }
 
   private getDefaultSystemPrompt(): string {
@@ -156,4 +181,3 @@ export class AIService {
 - 工具2: geogebra_plot_integral(name="integral1", functionName="f", lowerBound=0, upperBound=2)`;
   }
 }
-
