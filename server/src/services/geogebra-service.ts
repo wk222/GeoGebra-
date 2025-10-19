@@ -177,14 +177,14 @@ export class GeoGebraService {
     return { success: true, command };
   }
 
-  private async clearConstruction() {
+  async clearConstruction() {
     const command = 'Delete(*)';
-    
+
     if (this.useServerInstance && this.instance) {
       await this.instance.newConstruction();
       return { success: true, command, message: '画布已清空' };
     }
-    
+
     return { success: true, command };
   }
 

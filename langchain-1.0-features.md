@@ -114,12 +114,12 @@ abstract class StructuredTool<SchemaT, SchemaOutputT, SchemaInputT, ToolOutputT>
   abstract schema: SchemaT;  // Zod schema
   returnDirect: boolean;
   responseFormat?: "content" | "content_and_artifact";
-  
+
   abstract _call(
     arg: SchemaOutputT,
     runManager?: CallbackManagerForToolRun
   ): Promise<ToolOutputT>;
-  
+
   invoke(input, config?): Promise<ToolReturnType>;
 }
 ```
@@ -141,6 +141,56 @@ interface ToolDefinition {
   };
 }
 ```
+
+#### `tool()` 辅助函数（LangChain 1.0 新增）
+
+`tool()` 是一个便捷函数，用于快速创建 `DynamicStructuredTool`：
+
+```typescript
+import { tool } from "langchain";
+import { z } from "zod";
+
+// 完整签名
+function tool<SchemaT = z.ZodObject<any>>(
+  func: (input: z.infer<SchemaT>) => Promise<string>,
+  fields: {
+    name: string;
+    description: string;
+    schema: SchemaT;
+    responseFormat?: "content" | "content_and_artifact";
+  }
+): DynamicStructuredTool;
+
+// 使用示例
+const weatherTool = tool(
+  async ({ location }: { location: string }) => {
+    // 工具实现
+    return `Weather in ${location}: Sunny`;
+  },
+  {
+    name: "get_weather",
+    description: "Get current weather for a location",
+    schema: z.object({
+      location: z.string().describe("City name"),
+    }),
+  }
+);
+
+// 调用工具
+const result = await weatherTool.invoke({ location: "San Francisco" });
+// 或
+const result = await weatherTool.invoke({
+  name: "get_weather",
+  args: { location: "San Francisco" }
+});
+```
+
+**关键特性**：
+- ✅ 自动类型推断（从 Zod schema）
+- ✅ 支持异步函数
+- ✅ 可选的 `responseFormat`（content / content_and_artifact）
+- ✅ 自动处理 schema 验证
+- ✅ 返回 `DynamicStructuredTool` 实例，可与 `bindTools()` 配合使用
 
 ---
 
@@ -321,19 +371,73 @@ for await (const event of eventStream) {
 
 ### 3. **Tool Calling 原生支持**
 
+#### `bindTools()` 方法详解
+
+`bindTools()` 是 `BaseChatModel` 的方法，用于将工具绑定到模型：
+
 ```typescript
+class BaseChatModel {
+  bindTools(
+    tools: Array<
+      | StructuredToolInterface
+      | Record<string, any>
+      | ToolDefinition
+      | RunnableToolLike
+      | StructuredToolParams
+    >,
+    kwargs?: Partial<CallOptions>
+  ): Runnable;
+}
+```
+
+**接受的工具格式**：
+1. **LangChain StructuredTool** - 由 `tool()` 创建的工具
+2. **OpenAI Function Schema** - 原生 OpenAI 函数格式
+3. **ToolDefinition** - JSON Schema 工具定义
+4. **RunnableToolLike** - 任何 Runnable
+
+**使用示例**：
+
+```typescript
+import { ChatOpenAI } from "@langchain/openai";
+import { tool } from "langchain";
+import { z } from "zod";
+
 const model = new ChatOpenAI({ modelName: "gpt-4" });
 
-// 绑定工具
-const modelWithTools = model.bindTools([
+// 方式 1: 使用 tool() 函数（推荐）
+const weatherTool = tool(
+  async ({ location }) => `Weather: Sunny in ${location}`,
   {
     name: "get_weather",
     description: "Get weather for a location",
-    parameters: zodToJsonSchema(weatherSchema)
+    schema: z.object({
+      location: z.string().describe("City name"),
+    }),
+  }
+);
+
+const modelWithTools = model.bindTools([weatherTool]);
+
+// 方式 2: 使用 OpenAI 函数格式
+const modelWithTools2 = model.bindTools([
+  {
+    type: "function",
+    function: {
+      name: "get_weather",
+      description: "Get weather for a location",
+      parameters: {
+        type: "object",
+        properties: {
+          location: { type: "string", description: "City name" }
+        },
+        required: ["location"]
+      }
+    }
   }
 ]);
 
-// 自动工具调用
+// 调用模型
 const response = await modelWithTools.invoke([
   new HumanMessage("What's the weather in SF?")
 ]);
@@ -341,8 +445,96 @@ const response = await modelWithTools.invoke([
 // 检查工具调用
 if (response.tool_calls && response.tool_calls.length > 0) {
   const toolCall = response.tool_calls[0];
-  // 执行工具...
+  // toolCall: { name: "get_weather", args: { location: "SF" }, id: "..." }
+
+  // 执行工具
+  const toolResult = await weatherTool.invoke(toolCall.args);
+
+  // 返回结果给模型
+  const finalResponse = await modelWithTools.invoke([
+    new HumanMessage("What's the weather in SF?"),
+    response, // AI 的工具调用消息
+    new ToolMessage({
+      tool_call_id: toolCall.id,
+      content: toolResult,
+    })
+  ]);
 }
+```
+
+**工具调用循环模式**：
+
+```typescript
+async function runToolLoop(
+  model: BaseChatModel,
+  messages: BaseMessage[],
+  tools: StructuredTool[],
+  maxIterations = 5
+) {
+  const modelWithTools = model.bindTools(tools);
+  let currentMessages = [...messages];
+
+  for (let i = 0; i < maxIterations; i++) {
+    const response = await modelWithTools.invoke(currentMessages);
+
+    // 没有工具调用，返回最终答案
+    if (!response.tool_calls || response.tool_calls.length === 0) {
+      return response;
+    }
+
+    // 执行所有工具调用
+    const toolMessages = [];
+    for (const toolCall of response.tool_calls) {
+      const tool = tools.find(t => t.name === toolCall.name);
+      if (tool) {
+        const result = await tool.invoke(toolCall.args);
+        toolMessages.push(new ToolMessage({
+          tool_call_id: toolCall.id,
+          content: typeof result === "string" ? result : JSON.stringify(result),
+        }));
+      }
+    }
+
+    // 添加到消息历史
+    currentMessages.push(response, ...toolMessages);
+  }
+
+  throw new Error("达到最大迭代次数");
+}
+```
+
+**重要注意事项**：
+
+⚠️ **自定义 API 兼容性问题**
+某些自定义 API（如 Cloudflare Workers AI）对工具 schema 格式要求更严格：
+- 必须包含 `properties` 字段（即使为空 `{}`）
+- Zod schema 转换可能不完全兼容
+- 建议使用 OpenAI Function 原生格式或测试兼容性
+
+✅ **最佳实践**：
+```typescript
+// ❌ 可能失败（自定义 API）
+const modelWithTools = model.bindTools(geogebraTools);
+
+// ✅ 更安全（手动构造 schema）
+const modelWithTools = model.bindTools([
+  {
+    type: "function",
+    function: {
+      name: "geogebra_create_point",
+      description: "Create a point in GeoGebra",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Point name" },
+          x: { type: "number", description: "X coordinate" },
+          y: { type: "number", description: "Y coordinate" },
+        },
+        required: ["name", "x", "y"],
+      },
+    },
+  },
+]);
 ```
 
 ### 4. **结构化输出**
