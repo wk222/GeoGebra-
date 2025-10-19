@@ -27,16 +27,6 @@ export class AIService {
       hasBaseURL: !!baseURL,
     });
     
-    // 转换工具为 OpenAI 格式
-    const tools = geogebraTools.map(tool => ({
-      type: 'function' as const,
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.schema,
-      },
-    }));
-    
     if (provider === 'openai' || provider === 'custom') {
       const modelInstance = new ChatOpenAI({
         model: model || 'gpt-4-turbo-preview',
@@ -47,8 +37,8 @@ export class AIService {
         temperature: 0.7,
       });
       
-      // 绑定工具
-      return (modelInstance as any).bind({ tools });
+      // 直接绑定 LangChain 工具
+      return modelInstance.bindTools(geogebraTools);
     } else if (provider === 'anthropic') {
       const modelInstance = new ChatAnthropic({
         model: model || 'claude-3-5-sonnet-20241022',
@@ -56,8 +46,8 @@ export class AIService {
         temperature: 0.7,
       });
       
-      // 绑定工具
-      return (modelInstance as any).bind({ tools });
+      // 直接绑定 LangChain 工具
+      return modelInstance.bindTools(geogebraTools);
     }
     
     // 默认 OpenAI
@@ -70,13 +60,13 @@ export class AIService {
       temperature: 0.7,
     });
     
-    return (modelInstance as any).bind({ tools });
+    return modelInstance.bindTools(geogebraTools);
   }
 
   async chat(messages: Message[]): Promise<{ message: Message; toolCalls: any[] }> {
     try {
       // 添加系统提示
-      const allMessages = [
+      let conversationMessages = [
         { role: 'system', content: this.getSystemPrompt() },
         ...messages.map(msg => ({
           role: msg.role,
@@ -84,51 +74,126 @@ export class AIService {
         })),
       ];
 
-      logger.info('🚀 调用模型', {
-        messageCount: allMessages.length,
+      const allToolCalls: any[] = [];
+      const maxIterations = 5;
+      let iteration = 0;
+
+      logger.info('🚀 开始对话循环', {
+        initialMessageCount: conversationMessages.length,
       });
 
-      // 调用模型
-      const response = await this.model.invoke(allMessages);
-      
-      // 提取工具调用
-      const toolCalls = ((response as any).tool_calls || []).map((tc: any) => ({
-        id: tc.id || `tool-${Date.now()}`,
-        type: 'geogebra' as const,
-        tool: tc.name,
-        parameters: tc.args,
-      }));
+      while (iteration < maxIterations) {
+        iteration++;
+        
+        logger.info(`🔄 循环 ${iteration}/${maxIterations}`, {
+          messageCount: conversationMessages.length,
+        });
 
-      logger.info('✅ 模型响应', {
-        hasContent: !!response.content,
-        toolCallsCount: toolCalls.length,
-      });
+        // 调用模型
+        const response = await this.model.invoke(conversationMessages);
+        
+        // 提取工具调用
+        const toolCalls = ((response as any).tool_calls || []).map((tc: any) => ({
+          id: tc.id || `tool-${Date.now()}-${Math.random()}`,
+          type: 'geogebra' as const,
+          tool: tc.name,
+          parameters: tc.args,
+        }));
 
-      // 执行工具调用
-      for (const toolCall of toolCalls) {
-        try {
-          logger.info(`🔧 执行工具: ${toolCall.tool}`, toolCall.parameters);
-          await geogebraService.executeTool(toolCall);
-          logger.info(`✅ 工具成功: ${toolCall.tool}`);
-        } catch (error) {
-          logger.error(`❌ 工具失败: ${toolCall.tool}`, error);
+        logger.info(`✅ 模型响应 [${iteration}]`, {
+          hasContent: !!response.content,
+          toolCallsCount: toolCalls.length,
+        });
+
+        // 如果有内容但没有工具调用，结束循环
+        if (response.content && toolCalls.length === 0) {
+          logger.info('✅ 对话完成（有内容，无工具调用）');
+          
+          const responseMessage: Message = {
+            id: (response as any).id || crypto.randomUUID(),
+            role: 'assistant',
+            content: typeof response.content === 'string' ? response.content : '',
+            timestamp: new Date(),
+          };
+
+          return {
+            message: responseMessage,
+            toolCalls: allToolCalls,
+          };
         }
+
+        // 如果没有工具调用也没有内容，结束
+        if (toolCalls.length === 0) {
+          logger.info('✅ 对话完成（无工具调用）');
+          
+          const responseMessage: Message = {
+            id: (response as any).id || crypto.randomUUID(),
+            role: 'assistant',
+            content: typeof response.content === 'string' ? response.content : '操作已完成',
+            timestamp: new Date(),
+          };
+
+          return {
+            message: responseMessage,
+            toolCalls: allToolCalls,
+          };
+        }
+
+        // 执行工具调用
+        const toolResults = [];
+        for (const toolCall of toolCalls) {
+          try {
+            logger.info(`🔧 执行工具 [${iteration}]: ${toolCall.tool}`, toolCall.parameters);
+            await geogebraService.executeTool(toolCall);
+            toolResults.push({
+              tool_call_id: toolCall.id,
+              output: 'success',
+            });
+            allToolCalls.push({
+              ...toolCall,
+              result: { success: true },
+            });
+            logger.info(`✅ 工具成功 [${iteration}]: ${toolCall.tool}`);
+          } catch (error) {
+            logger.error(`❌ 工具失败 [${iteration}]: ${toolCall.tool}`, error);
+            toolResults.push({
+              tool_call_id: toolCall.id,
+              output: `error: ${error}`,
+            });
+            allToolCalls.push({
+              ...toolCall,
+              result: { success: false, error: String(error) },
+            });
+          }
+        }
+
+        // 添加助手消息（带工具调用）和工具结果到对话
+        conversationMessages.push({
+          role: 'assistant',
+          content: response.content || '',
+          tool_calls: (response as any).tool_calls,
+        } as any);
+
+        conversationMessages.push({
+          role: 'tool',
+          content: JSON.stringify(toolResults),
+          tool_call_id: toolResults[0]?.tool_call_id,
+        } as any);
       }
 
-      // 构建返回消息
+      // 达到最大迭代次数
+      logger.warn('⚠️ 达到最大迭代次数');
+      
       const responseMessage: Message = {
-        id: (response as any).id || crypto.randomUUID(),
+        id: crypto.randomUUID(),
         role: 'assistant',
-        content: typeof response.content === 'string' ? response.content : '',
+        content: '已完成所有可视化操作',
         timestamp: new Date(),
       };
 
       return {
         message: responseMessage,
-        toolCalls: toolCalls.map(tc => ({
-          ...tc,
-          result: { success: true },
-        })),
+        toolCalls: allToolCalls,
       };
 
     } catch (error: any) {
