@@ -1,4 +1,4 @@
-import { generateText, tool, jsonSchema } from 'ai';
+import { generateText, tool } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import logger from '../utils/logger';
@@ -31,12 +31,10 @@ export class AIService {
     for (const t of geogebraTools) {
       logger.info(`创建工具: ${t.name}`);
 
-      // 直接传递 t.parameters 到 jsonSchema，不要重构
-      const schema = jsonSchema(t.parameters as any);
-
+      // 直接使用 Zod schemas
       tools[t.name] = tool({
         description: t.description,
-        parameters: schema,
+        parameters: t.parameters,
       } as any);
     }
     

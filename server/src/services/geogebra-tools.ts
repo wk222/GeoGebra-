@@ -1,114 +1,73 @@
-// GeoGebra 工具定义（使用标准 JSON Schema）
+import { z } from 'zod';
+
+// GeoGebra 工具定义（使用 Zod schemas）
 export const geogebraTools = [
   {
     name: 'geogebra_create_point',
     description: '在 GeoGebra 中创建一个点',
-    parameters: {
-      type: 'object' as const,
-      properties: {
-        name: { type: 'string', description: '点的名称（例如："A", "P1"）' },
-        x: { type: 'number', description: '点的 X 坐标' },
-        y: { type: 'number', description: '点的 Y 坐标' },
-      },
-      required: ['name', 'x', 'y'],
-      additionalProperties: false,
-    },
+    parameters: z.object({
+      name: z.string().describe('点的名称（例如："A", "P1"）'),
+      x: z.number().describe('点的 X 坐标'),
+      y: z.number().describe('点的 Y 坐标'),
+    }),
   },
   {
     name: 'geogebra_create_line',
     description: '在 GeoGebra 中创建一条直线',
-    parameters: {
-      type: 'object' as const,
-      properties: {
-        name: { type: 'string', description: '直线的名称' },
-        point1: { type: 'string', description: '第一个点的名称' },
-        point2: { type: 'string', description: '第二个点的名称' },
-      },
-      required: ['name', 'point1', 'point2'],
-      additionalProperties: false,
-    },
+    parameters: z.object({
+      name: z.string().describe('直线的名称'),
+      point1: z.string().describe('第一个点的名称'),
+      point2: z.string().describe('第二个点的名称'),
+    }),
   },
   {
     name: 'geogebra_create_circle',
     description: '在 GeoGebra 中创建一个圆',
-    parameters: {
-      type: 'object' as const,
-      properties: {
-        name: { type: 'string', description: '圆的名称' },
-        center: { type: 'string', description: '圆心的名称' },
-        radius: { type: 'number', description: '圆的半径' },
-      },
-      required: ['name', 'center', 'radius'],
-      additionalProperties: false,
-    },
+    parameters: z.object({
+      name: z.string().describe('圆的名称'),
+      center: z.string().describe('圆心的名称'),
+      radius: z.number().describe('圆的半径'),
+    }),
   },
   {
     name: 'geogebra_plot_function',
     description: '绘制数学函数',
-    parameters: {
-      type: 'object' as const,
-      properties: {
-        name: { type: 'string', description: '函数的名称（例如："f", "g"）' },
-        expression: { type: 'string', description: '函数表达式（例如："x^2", "sin(x)"）' },
-        xMin: { type: 'number', description: '定义域最小值（可选）' },
-        xMax: { type: 'number', description: '定义域最大值（可选）' },
-        color: { type: 'string', description: '函数颜色（可选）' },
-      },
-      required: ['name', 'expression'],
-      additionalProperties: false,
-    },
+    parameters: z.object({
+      name: z.string().describe('函数的名称（例如："f", "g"）'),
+      expression: z.string().describe('函数表达式（例如："x^2", "sin(x)"）'),
+      xMin: z.number().optional().describe('定义域最小值（可选）'),
+      xMax: z.number().optional().describe('定义域最大值（可选）'),
+      color: z.string().optional().describe('函数颜色（可选）'),
+    }),
   },
   {
     name: 'geogebra_create_polygon',
     description: '创建多边形',
-    parameters: {
-      type: 'object' as const,
-      properties: {
-        name: { type: 'string', description: '多边形的名称' },
-        vertices: { 
-          type: 'array',
-          items: { type: 'string' },
-          description: '顶点名称数组',
-        },
-      },
-      required: ['name', 'vertices'],
-      additionalProperties: false,
-    },
+    parameters: z.object({
+      name: z.string().describe('多边形的名称'),
+      vertices: z.array(z.string()).describe('顶点名称数组'),
+    }),
   },
   {
     name: 'geogebra_clear_construction',
     description: '清除所有 GeoGebra 构造',
-    parameters: {
-      type: 'object' as const,
-      properties: {},
-      additionalProperties: false,
-    },
+    parameters: z.object({}),
   },
   {
     name: 'geogebra_plot_integral',
     description: '绘制定积分的可视化图形（在函数和x轴之间填充阴影面积）。用于展示积分的几何意义。必须先定义函数，然后再调用此工具。',
-    parameters: {
-      type: 'object' as const,
-      properties: {
-        name: { type: 'string', description: '积分对象的名称' },
-        functionName: { type: 'string', description: '要积分的函数名称（需要先定义函数）' },
-        lowerBound: { type: 'number', description: '积分下限' },
-        upperBound: { type: 'number', description: '积分上限' },
-      },
-      required: ['name', 'functionName', 'lowerBound', 'upperBound'],
-      additionalProperties: false,
-    },
+    parameters: z.object({
+      name: z.string().describe('积分对象的名称'),
+      functionName: z.string().describe('要积分的函数名称（需要先定义函数）'),
+      lowerBound: z.number().describe('积分下限'),
+      upperBound: z.number().describe('积分上限'),
+    }),
   },
   {
     name: 'geogebra_eval_command',
     description: '执行自定义 GeoGebra 命令（当其他工具无法满足需求时使用）',
-    parameters: {
-      type: 'object' as const,
-      properties: {
-        command: { type: 'string', description: 'GeoGebra 命令（例如："A = (1, 2)", "Integral(f, 0, 2)"）' },
-      },
-      required: ['command'],
-      additionalProperties: false,
-    },
+    parameters: z.object({
+      command: z.string().describe('GeoGebra 命令（例如："A = (1, 2)", "Integral(f, 0, 2)"）'),
+    }),
   },
 ];
