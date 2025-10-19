@@ -3,6 +3,7 @@ import { AIService } from '../services/ai-service';
 import { geogebraService } from '../services/geogebra-service';
 import logger from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { Message } from '../types';
 
 export const chatRouter = Router();
 
@@ -26,27 +27,62 @@ chatRouter.post('/message', async (req, res) => {
       aiService.updateConfig(config);
     }
 
-    // 调用 AI
-    const { message, toolCalls } = await aiService.chat(messages);
+    // Agent 循环：让 AI 可以多次调用工具
+    const maxIterations = 5; // 最多循环 5 次防止无限循环
+    let currentMessages = [...messages];
+    let allToolResults: any[] = [];
+    let finalMessage: Message | null = null;
 
-    // 执行工具调用
-    const toolResults = [];
-    if (toolCalls && toolCalls.length > 0) {
+    for (let iteration = 0; iteration < maxIterations; iteration++) {
+      logger.info(`Agent 循环 ${iteration + 1}/${maxIterations}`);
+
+      // 调用 AI
+      const { message, toolCalls } = await aiService.chat(currentMessages);
+      finalMessage = message;
+
+      // 如果没有工具调用，说明 AI 已经完成任务
+      if (!toolCalls || toolCalls.length === 0) {
+        logger.info('AI 没有更多工具调用，循环结束');
+        break;
+      }
+
+      // 执行工具调用
+      const toolResults = [];
       for (const toolCall of toolCalls) {
         try {
           const result = await geogebraService.executeTool(toolCall);
-          toolResults.push({
+          const toolResult = {
             ...toolCall,
             result,
-          });
+          };
+          toolResults.push(toolResult);
+          allToolResults.push(toolResult);
         } catch (error) {
           logger.error('工具执行失败', error);
-          toolResults.push({
+          const toolResult = {
             ...toolCall,
             error: error instanceof Error ? error.message : String(error),
-          });
+          };
+          toolResults.push(toolResult);
+          allToolResults.push(toolResult);
         }
       }
+
+      // 将 AI 的消息和工具结果添加到对话历史中
+      currentMessages.push(message);
+      
+      // 添加工具执行结果作为系统消息
+      const toolResultMessage: Message = {
+        id: uuidv4(),
+        role: 'system',
+        content: `工具执行结果：\n${toolResults.map(tr => 
+          `- ${tr.tool}: ${tr.result ? '成功' : '失败'}`
+        ).join('\n')}`,
+        timestamp: new Date(),
+      };
+      currentMessages.push(toolResultMessage);
+
+      logger.info(`已执行 ${toolResults.length} 个工具，继续下一轮...`);
     }
 
     // 获取当前画布状态
@@ -54,12 +90,12 @@ chatRouter.post('/message', async (req, res) => {
 
     res.json({
       message: {
-        id: message.id || uuidv4(),
-        role: message.role,
-        content: message.content,
-        timestamp: message.timestamp || new Date(),
+        id: finalMessage?.id || uuidv4(),
+        role: finalMessage?.role || 'assistant',
+        content: finalMessage?.content || '',
+        timestamp: finalMessage?.timestamp || new Date(),
       },
-      toolCalls: toolResults,
+      toolCalls: allToolResults,
       objects,
     });
   } catch (error) {
@@ -80,4 +116,3 @@ chatRouter.delete('/session/:sessionId', async (req, res) => {
     res.status(500).json({ error: '服务器错误' });
   }
 });
-
