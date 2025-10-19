@@ -1,23 +1,24 @@
+import { createAgent } from 'langchain';
 import { ChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
-import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
 import logger from '../utils/logger';
 import { AIConfig, Message } from '../types';
 import { geogebraTools } from './geogebra-tools';
+import { geogebraService } from './geogebra-service';
 
 export class AIService {
-  private model: ChatOpenAI | ChatAnthropic;
+  private agent: any;
 
   constructor(private config: AIConfig) {
-    this.model = this.createModelInstance();
+    this.createAgent();
   }
 
   updateConfig(newConfig: AIConfig) {
     this.config = newConfig;
-    this.model = this.createModelInstance();
+    this.createAgent();
   }
 
-  private createModelInstance(): ChatOpenAI | ChatAnthropic {
+  private createModelInstance() {
     const { provider, model, apiKey, baseURL } = this.config;
     
     logger.info('创建模型实例', {
@@ -35,34 +36,16 @@ export class AIService {
           baseURL: baseURL,
         },
         temperature: 0.7,
-      }).bind({
-        tools: geogebraTools.map(tool => ({
-          type: 'function' as const,
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.schema,
-          },
-        })),
       });
     } else if (provider === 'anthropic') {
       return new ChatAnthropic({
         model: model || 'claude-3-5-sonnet-20241022',
         apiKey: apiKey,
         temperature: 0.7,
-      }).bind({
-        tools: geogebraTools.map(tool => ({
-          type: 'function' as const,
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.schema,
-          },
-        })),
       });
     }
     
-    // 默认使用 OpenAI
+    // 默认 OpenAI
     return new ChatOpenAI({
       model: model || 'gpt-4-turbo-preview',
       apiKey: apiKey,
@@ -70,70 +53,92 @@ export class AIService {
         baseURL: baseURL,
       },
       temperature: 0.7,
-    }).bind({
-      tools: geogebraTools.map(tool => ({
-        type: 'function' as const,
-        function: {
-          name: tool.name,
-          description: tool.description,
-          parameters: tool.schema,
-        },
-      })),
     });
+  }
+
+  private createAgent() {
+    const modelInstance = this.createModelInstance();
+
+    logger.info('创建 Agent', {
+      provider: this.config.provider,
+      toolsCount: geogebraTools.length,
+    });
+
+    this.agent = createAgent({
+      model: modelInstance,
+      tools: geogebraTools,
+      systemPrompt: this.getSystemPrompt(),
+    } as any);
+    
+    logger.info('✅ Agent 创建完成');
   }
 
   async chat(messages: Message[]): Promise<{ message: Message; toolCalls: any[] }> {
     try {
-      // 转换消息格式为 LangChain 格式
-      const langchainMessages = [
-        new SystemMessage(this.getDefaultSystemPrompt()),
-        ...messages.map(msg => {
-          if (msg.role === 'user') {
-            return new HumanMessage(msg.content);
-          } else if (msg.role === 'assistant') {
-            return new AIMessage(msg.content);
-          } else {
-            return new SystemMessage(msg.content);
-          }
-        }),
-      ];
-
-      logger.info('🚀 开始 AI 对话', {
-        messageCount: langchainMessages.length,
-      });
-
-      // 调用模型
-      const response = await this.model.invoke(langchainMessages);
-      
-      logger.info('✅ 模型响应', {
-        hasContent: !!response.content,
-        hasToolCalls: !!(response as any).tool_calls && (response as any).tool_calls.length > 0,
-        toolCallsCount: ((response as any).tool_calls || []).length,
-      });
-
-      // 提取工具调用
-      const toolCalls = ((response as any).tool_calls || []).map((tc: any) => ({
-        id: tc.id || `tool-${Date.now()}`,
-        type: 'geogebra',
-        tool: tc.name,
-        parameters: tc.args,
+      // 转换消息格式
+      const formattedMessages = messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
       }));
 
+      logger.info('🚀 调用 Agent', {
+        messageCount: formattedMessages.length,
+      });
+
+      // 调用 agent（内置循环）
+      const result = await this.agent.invoke({
+        messages: formattedMessages,
+      });
+
+      // 提取最后的 AI 消息
+      const lastMessage = result.messages[result.messages.length - 1];
+      
       // 构建返回消息
       const responseMessage: Message = {
-        id: (response as any).id || crypto.randomUUID(),
+        id: lastMessage.id || crypto.randomUUID(),
         role: 'assistant',
-        content: typeof response.content === 'string' ? response.content : '',
+        content: lastMessage.content || '',
         timestamp: new Date(),
       };
 
+      // 提取所有工具调用并执行 GeoGebra 命令
+      const allToolCalls: any[] = [];
+      for (const msg of result.messages) {
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+          for (const tc of msg.tool_calls) {
+            const toolCall = {
+              id: tc.id,
+              type: 'geogebra' as const,
+              tool: tc.name,
+              parameters: tc.args,
+              result: { success: true },
+            };
+            allToolCalls.push(toolCall);
+            
+            // 执行实际的 GeoGebra 命令
+            try {
+              logger.info(`🔧 执行 GeoGebra 工具: ${tc.name}`, tc.args);
+              await geogebraService.executeTool(toolCall);
+              logger.info(`✅ GeoGebra 执行成功: ${tc.name}`);
+            } catch (geoError) {
+              logger.error(`❌ GeoGebra 执行失败: ${tc.name}`, geoError);
+            }
+          }
+        }
+      }
+
+      logger.info('✅ Agent 响应完成', {
+        hasContent: !!responseMessage.content,
+        toolCallsCount: allToolCalls.length,
+      });
+
       return {
         message: responseMessage,
-        toolCalls,
+        toolCalls: allToolCalls,
       };
 
     } catch (error: any) {
-      logger.error('AI 聊天失败', {
+      logger.error('❌ AI 聊天失败', {
         message: error.message,
         name: error.name,
       });
@@ -141,7 +146,7 @@ export class AIService {
     }
   }
 
-  private getDefaultSystemPrompt(): string {
+  private getSystemPrompt(): string {
     return `你是一个专业的数学教学助手，擅长使用 GeoGebra 创建数学可视化。
 
 可用的 GeoGebra 工具：

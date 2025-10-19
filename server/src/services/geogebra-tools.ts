@@ -1,11 +1,11 @@
-import { tool } from '@langchain/core/tools';
+import { tool } from 'langchain';
 import { z } from 'zod';
 
-// GeoGebra 工具定义（LangChain 1.0 格式）
+// 使用 LangChain 1.0 的 tool() 函数定义工具
 export const geogebraTools = [
   tool(
-    async ({ name, x, y }) => {
-      return { success: true, name, x, y };
+    async ({ name, x, y }: { name: string; x: number; y: number }) => {
+      return JSON.stringify({ success: true, name, x, y });
     },
     {
       name: 'geogebra_create_point',
@@ -19,8 +19,8 @@ export const geogebraTools = [
   ),
 
   tool(
-    async ({ name, point1, point2 }) => {
-      return { success: true, name, point1, point2 };
+    async ({ name, point1, point2 }: { name: string; point1: string; point2: string }) => {
+      return JSON.stringify({ success: true, name, point1, point2 });
     },
     {
       name: 'geogebra_create_line',
@@ -34,8 +34,8 @@ export const geogebraTools = [
   ),
 
   tool(
-    async ({ name, center, radius }) => {
-      return { success: true, name, center, radius };
+    async ({ name, center, radius }: { name: string; center: string; radius: number }) => {
+      return JSON.stringify({ success: true, name, center, radius });
     },
     {
       name: 'geogebra_create_circle',
@@ -49,15 +49,15 @@ export const geogebraTools = [
   ),
 
   tool(
-    async ({ name, expression, xMin, xMax, color }) => {
-      return { success: true, name, expression, xMin, xMax, color };
+    async ({ name, expression, xMin, xMax, color }: any) => {
+      return JSON.stringify({ success: true, name, expression, xMin, xMax, color });
     },
     {
       name: 'geogebra_plot_function',
       description: '绘制数学函数',
       schema: z.object({
         name: z.string().describe('函数的名称（例如："f", "g"）'),
-        expression: z.string().describe('函数表达式（例如："x^2", "sin(x)"）'),
+        expression: z.string().describe('函数表达式（例如:"x^2", "sin(x)"）'),
         xMin: z.number().optional().describe('定义域最小值（可选）'),
         xMax: z.number().optional().describe('定义域最大值（可选）'),
         color: z.string().optional().describe('函数颜色（可选）'),
@@ -66,8 +66,8 @@ export const geogebraTools = [
   ),
 
   tool(
-    async ({ name, vertices }) => {
-      return { success: true, name, vertices };
+    async ({ name, vertices }: { name: string; vertices: string[] }) => {
+      return JSON.stringify({ success: true, name, vertices });
     },
     {
       name: 'geogebra_create_polygon',
@@ -81,7 +81,7 @@ export const geogebraTools = [
 
   tool(
     async () => {
-      return { success: true };
+      return JSON.stringify({ success: true });
     },
     {
       name: 'geogebra_clear_construction',
@@ -91,8 +91,8 @@ export const geogebraTools = [
   ),
 
   tool(
-    async ({ name, functionName, lowerBound, upperBound }) => {
-      return { success: true, name, functionName, lowerBound, upperBound };
+    async ({ name, functionName, lowerBound, upperBound }: any) => {
+      return JSON.stringify({ success: true, name, functionName, lowerBound, upperBound });
     },
     {
       name: 'geogebra_plot_integral',
@@ -107,8 +107,8 @@ export const geogebraTools = [
   ),
 
   tool(
-    async ({ command }) => {
-      return { success: true, command };
+    async ({ command }: { command: string }) => {
+      return JSON.stringify({ success: true, command });
     },
     {
       name: 'geogebra_eval_command',
