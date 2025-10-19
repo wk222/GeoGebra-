@@ -9,9 +9,13 @@ import { chatRouter } from './routes/chat';
 import { geogebraRouter } from './routes/geogebra';
 import { configRouter } from './routes/config';
 import { setupWebSocket } from './websocket';
+import { initializeAgents } from './agents';
 
 // 加载环境变量
 dotenv.config();
+
+// 初始化智能体系统
+initializeAgents();
 
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
