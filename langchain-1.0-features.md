@@ -312,17 +312,536 @@ interface CallbackManager {
 
 ---
 
-### 13. **Agents (智能体)**
+### 13. **Agents (智能体) - LangChain 1.0 全新方式**
 
-**注意**: LangChain 1.0 中传统的 Agent 抽象已被弃用，推荐使用 **LangGraph** 构建自定义循环。
+LangChain 1.0 引入了全新的 `createAgent` API，取代了传统的 Agent 类。
 
-#### 传统 Agent 类型（已弃用）
-- OpenAI Functions Agent
-- Conversational Agent
-- ReAct Agent
+#### ⚠️ 传统 Agent 类型（已弃用）
+- `createOpenAIFunctionsAgent` - 已废弃
+- `createReactAgent` (旧版) - 已废弃
+- Conversational Agent - 已废弃
 
-#### 推荐方式
-使用 **Runnable** + **手动循环** 或 **LangGraph**
+#### ✅ LangChain 1.0 推荐方式
+
+**三种可选方案**：
+1. **`createAgent()`** - 🔥 **最推荐**（支持中间件、内置持久化）
+2. **手动循环** + `bindTools()` - 完全控制（我们项目目前使用）
+3. **LangGraph** - 复杂状态图场景
+
+---
+
+## 🎯 LangChain 1.0 新增：`createAgent()` API
+
+### 核心特性
+
+`createAgent` 是 LangChain 1.0 的核心 API，基于 LangGraph 构建，提供：
+
+✅ **中间件系统** - 强大的可组合抽象
+✅ **自动持久化** - 内置对话历史保存
+✅ **流式支持** - 原生流式输出
+✅ **结构化输出** - 直接集成 Zod schema
+✅ **更简洁的 API** - 比手动循环更易用
+
+### 基础用法
+
+```typescript
+import { createAgent, tool } from "langchain";
+import { z } from "zod";
+
+// 定义工具
+const weatherTool = tool(
+  async ({ location }) => {
+    return `Weather in ${location}: Sunny, 72°F`;
+  },
+  {
+    name: "get_weather",
+    description: "Get current weather for a location",
+    schema: z.object({
+      location: z.string().describe("City name"),
+    }),
+  }
+);
+
+// 创建 Agent
+const agent = createAgent({
+  model: "openai:gpt-4o",  // 支持 "provider:model" 格式
+  tools: [weatherTool],
+  systemPrompt: "You are a helpful weather assistant.",
+});
+
+// 调用 Agent
+const result = await agent.invoke({
+  messages: [
+    { role: "user", content: "What's the weather in Tokyo?" }
+  ]
+});
+
+console.log(result.messages[result.messages.length - 1].content);
+```
+
+### 完整配置选项
+
+```typescript
+interface CreateAgentOptions {
+  // 必需参数
+  model: string;  // "openai:gpt-4o" | "anthropic:claude-3-5-sonnet"
+
+  // 可选参数
+  tools?: StructuredTool[];
+  systemPrompt?: string;
+  middleware?: Middleware[];
+  responseFormat?: z.ZodType;  // 结构化输出
+  checkpointSaver?: CheckpointSaver;  // 持久化
+  maxIterations?: number;  // 默认 15
+  context?: Record<string, any>;  // 自定义上下文
+}
+```
+
+---
+
+## 🔌 中间件系统 (Middleware)
+
+中间件是 `createAgent` 的核心创新，提供了"手术刀般精准"的控制。
+
+### 中间件钩子 (Hooks)
+
+#### 1. Node 风格钩子（顺序执行）
+
+```typescript
+interface NodeHooks {
+  // 在整个 Agent 执行前
+  beforeAgent?: (state: State) => void | Promise<void>;
+
+  // 在每次模型调用前
+  beforeModel?: (state: State) => JumpAction | void;
+
+  // 在每次模型调用后
+  afterModel?: (state: State, response: AIMessage) => JumpAction | StateUpdate;
+
+  // 在整个 Agent 执行后
+  afterAgent?: (state: State) => void | Promise<void>;
+}
+
+// JumpAction 用于控制流程跳转
+type JumpAction = { jumpTo: "end" | "tools" | "model" };
+```
+
+#### 2. Wrap 风格钩子（拦截执行）
+
+```typescript
+interface WrapHooks {
+  // 拦截模型调用
+  wrapModelCall?: (
+    request: ModelRequest,
+    handler: (req: ModelRequest) => Promise<AIMessage>
+  ) => Promise<AIMessage>;
+
+  // 拦截工具调用
+  wrapToolCall?: (
+    toolCall: ToolCall,
+    handler: (tc: ToolCall) => Promise<ToolMessage>
+  ) => Promise<ToolMessage>;
+}
+```
+
+### 内置中间件
+
+#### 1. **对话摘要中间件**
+
+自动压缩长对话历史：
+
+```typescript
+import { createAgent, summarizationMiddleware } from "langchain";
+
+const agent = createAgent({
+  model: "openai:gpt-4o",
+  tools: [weatherTool, searchTool],
+  middleware: [
+    summarizationMiddleware({
+      maxTokens: 1000,  // 触发摘要的阈值
+      summarizationModel: "openai:gpt-4o-mini",  // 用便宜模型摘要
+    })
+  ]
+});
+```
+
+#### 2. **人类审核中间件**
+
+敏感操作需要人工确认：
+
+```typescript
+import { createAgent, humanInTheLoopMiddleware } from "langchain";
+
+const agent = createAgent({
+  model: "openai:gpt-4o",
+  tools: [deleteUserTool, sendEmailTool],
+  middleware: [
+    humanInTheLoopMiddleware({
+      toolsRequiringApproval: ["delete_user", "send_email"],
+      approvalTimeout: 60000,  // 60秒超时
+    })
+  ]
+});
+```
+
+#### 3. **PII 脱敏中间件**
+
+自动检测和屏蔽敏感信息：
+
+```typescript
+import { createAgent, piiRedactionMiddleware } from "langchain";
+
+const agent = createAgent({
+  model: "openai:gpt-4o",
+  tools: [customerServiceTools],
+  middleware: [
+    piiRedactionMiddleware({
+      types: ["email", "phone", "ssn", "credit_card"],
+    })
+  ]
+});
+```
+
+#### 4. **工具调用限制中间件**
+
+防止无限循环：
+
+```typescript
+import { createAgent, toolCallLimitMiddleware } from "langchain";
+
+const agent = createAgent({
+  model: "openai:gpt-4o",
+  tools: [searchTool],
+  middleware: [
+    toolCallLimitMiddleware({
+      maxCalls: 5,  // 每次对话最多调用5次工具
+    })
+  ]
+});
+```
+
+#### 5. **Anthropic 提示缓存中间件**
+
+减少 Anthropic API 成本：
+
+```typescript
+import { createAgent, anthropicPromptCachingMiddleware } from "langchain";
+
+const agent = createAgent({
+  model: "anthropic:claude-3-5-sonnet",
+  systemPrompt: LONG_SYSTEM_PROMPT,  // 长提示
+  middleware: [
+    anthropicPromptCachingMiddleware({
+      ttl: "5m",  // 缓存5分钟
+    })
+  ]
+});
+```
+
+#### 6. **LLM 工具选择中间件**
+
+智能选择相关工具（解决工具过多问题）：
+
+```typescript
+import { createAgent, llmToolSelectorMiddleware } from "langchain";
+
+const agent = createAgent({
+  model: "openai:gpt-4o",
+  tools: [tool1, tool2, tool3, /* ... 100+ tools */],
+  middleware: [
+    llmToolSelectorMiddleware({
+      model: "openai:gpt-4o-mini",  // 用便宜模型选工具
+      maxTools: 5,  // 每次只传5个最相关的工具
+      alwaysInclude: ["search", "calculator"],  // 必选工具
+    })
+  ]
+});
+```
+
+### 自定义中间件
+
+#### 简单日志中间件
+
+```typescript
+import { createMiddleware } from "langchain";
+
+const loggingMiddleware = createMiddleware({
+  name: "LoggingMiddleware",
+
+  beforeModel: (state) => {
+    console.log(`🤖 调用模型，当前消息数: ${state.messages.length}`);
+  },
+
+  afterModel: (state, response) => {
+    console.log(`✅ 模型响应:`, response.content);
+    console.log(`🔧 工具调用数:`, response.tool_calls?.length || 0);
+  },
+});
+
+const agent = createAgent({
+  model: "openai:gpt-4o",
+  middleware: [loggingMiddleware],
+});
+```
+
+#### 带状态的计数器中间件
+
+```typescript
+import { createMiddleware } from "langchain";
+import { z } from "zod";
+
+const callCounterMiddleware = createMiddleware({
+  name: "CallCounterMiddleware",
+
+  // 定义状态 schema
+  stateSchema: z.object({
+    modelCallCount: z.number().default(0),
+    toolCallCount: z.number().default(0),
+  }),
+
+  beforeModel: (state) => {
+    // 限制最大调用次数
+    if (state.modelCallCount >= 10) {
+      console.warn("⚠️ 达到最大模型调用次数");
+      return { jumpTo: "end" };  // 跳转到结束
+    }
+  },
+
+  afterModel: (state, response) => {
+    // 更新计数
+    return {
+      modelCallCount: state.modelCallCount + 1,
+      toolCallCount: state.toolCallCount + (response.tool_calls?.length || 0),
+    };
+  },
+});
+```
+
+#### 动态工具过滤中间件
+
+```typescript
+const expertiseBasedToolMiddleware = createMiddleware({
+  name: "ExpertiseBasedToolMiddleware",
+
+  wrapModelCall: async (request, handler) => {
+    const userLevel = request.runtime.context.userExpertise;
+
+    // 根据用户等级选择工具
+    let tools;
+    if (userLevel === "expert") {
+      tools = [advancedSearchTool, dataAnalysisTool, sqlQueryTool];
+    } else if (userLevel === "intermediate") {
+      tools = [searchTool, calculatorTool];
+    } else {
+      tools = [simpleSearchTool];
+    }
+
+    // 修改请求，只传相关工具
+    const modifiedRequest = request.withTools(tools);
+    return handler(modifiedRequest);
+  },
+});
+
+// 使用时传入上下文
+const result = await agent.invoke({
+  messages: [{ role: "user", content: "Help me analyze data" }],
+  context: { userExpertise: "expert" },  // 传入上下文
+});
+```
+
+#### 自动重试中间件
+
+```typescript
+const retryMiddleware = createMiddleware({
+  name: "RetryMiddleware",
+
+  stateSchema: z.object({
+    retryCount: z.number().default(0),
+  }),
+
+  wrapModelCall: async (request, handler) => {
+    const maxRetries = 3;
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await handler(request);
+      } catch (error) {
+        if (i === maxRetries - 1) throw error;
+
+        console.warn(`⚠️ 模型调用失败，重试 ${i + 1}/${maxRetries}`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      }
+    }
+  },
+});
+```
+
+### 中间件组合
+
+中间件按顺序执行，可以组合多个中间件：
+
+```typescript
+const agent = createAgent({
+  model: "openai:gpt-4o",
+  tools: [...],
+  middleware: [
+    loggingMiddleware,         // 1. 先记录日志
+    callCounterMiddleware,     // 2. 统计调用次数
+    summarizationMiddleware(), // 3. 压缩历史
+    humanInTheLoopMiddleware(),// 4. 人工审核
+    retryMiddleware,           // 5. 自动重试
+  ]
+});
+```
+
+**执行顺序**：
+- `beforeModel`: 从上到下（1 → 5）
+- `afterModel`: 从下到上（5 → 1）
+- `wrapModelCall`: 嵌套执行（1包裹2，2包裹3...）
+
+---
+
+## 🆚 三种 Agent 方式对比
+
+### 1. createAgent (推荐)
+
+```typescript
+const agent = createAgent({
+  model: "openai:gpt-4o",
+  tools: [weatherTool],
+  middleware: [summarizationMiddleware()],
+});
+
+const result = await agent.invoke({
+  messages: [{ role: "user", content: "What's the weather?" }]
+});
+```
+
+**优点**：
+- ✅ 最简洁的 API
+- ✅ 内置持久化和流式
+- ✅ 强大的中间件系统
+- ✅ 自动处理工具循环
+
+**缺点**：
+- ❌ 相对较新（alpha 阶段）
+- ❌ 需要学习中间件概念
+
+**适用场景**：
+- 大多数生产应用
+- 需要高级功能（摘要、审核等）
+- 快速原型开发
+
+---
+
+### 2. 手动循环 (我们项目使用)
+
+```typescript
+async function runAgent(model, messages, tools) {
+  const modelWithTools = model.bindTools(tools);
+  let currentMessages = [...messages];
+
+  for (let i = 0; i < 5; i++) {
+    const response = await modelWithTools.invoke(currentMessages);
+
+    if (!response.tool_calls || response.tool_calls.length === 0) {
+      return response;
+    }
+
+    const toolMessages = [];
+    for (const toolCall of response.tool_calls) {
+      const tool = tools.find(t => t.name === toolCall.name);
+      const result = await tool.invoke(toolCall.args);
+      toolMessages.push(new ToolMessage({
+        tool_call_id: toolCall.id,
+        content: result,
+      }));
+    }
+
+    currentMessages.push(response, ...toolMessages);
+  }
+}
+```
+
+**优点**：
+- ✅ 完全控制执行流程
+- ✅ 易于调试
+- ✅ 无额外依赖
+- ✅ 兼容自定义 API
+
+**缺点**：
+- ❌ 需要手动实现持久化
+- ❌ 需要手动处理流式
+- ❌ 代码重复（每个 Agent 都要写循环）
+
+**适用场景**：
+- 需要完全自定义行为
+- 学习 Agent 工作原理
+- 兼容性要求高（如自定义 API）
+
+---
+
+### 3. LangGraph
+
+```typescript
+import { StateGraph } from "@langchain/langgraph";
+
+const workflow = new StateGraph({
+  channels: { messages: { value: [] } }
+});
+
+workflow.addNode("agent", async (state) => {
+  const response = await model.invoke(state.messages);
+  return { messages: [response] };
+});
+
+workflow.addNode("tools", async (state) => {
+  // 执行工具...
+});
+
+workflow.addEdge("agent", "tools");
+workflow.addConditionalEdges("tools", shouldContinue);
+
+const app = workflow.compile();
+const result = await app.invoke({ messages: [...] });
+```
+
+**优点**：
+- ✅ 最灵活（支持复杂状态图）
+- ✅ 可视化调试
+- ✅ 支持分支、并行、循环
+
+**缺点**：
+- ❌ 学习曲线陡峭
+- ❌ 代码冗长
+- ❌ 过度工程（简单场景）
+
+**适用场景**：
+- 复杂的多步骤工作流
+- 需要条件分支和并行
+- 状态管理复杂
+
+---
+
+## 📊 对比总结表
+
+| 特性 | createAgent | 手动循环 | LangGraph |
+|------|-------------|----------|-----------|
+| 易用性 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐ |
+| 灵活性 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+| 功能丰富度 | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
+| 学习成本 | 低 | 低 | 高 |
+| 代码量 | 最少 | 中等 | 最多 |
+| 持久化 | 内置 | 手动 | 内置 |
+| 流式支持 | 内置 | 手动 | 内置 |
+| 中间件 | ✅ | ❌ | ✅ |
+| 自定义API兼容 | ⚠️ | ✅ | ⚠️ |
+| 生产就绪 | Alpha | ✅ | ✅ |
+
+**推荐选择**：
+- 🥇 **大多数场景** → `createAgent`
+- 🥈 **需要完全控制** → 手动循环
+- 🥉 **复杂工作流** → LangGraph
 
 ---
 
