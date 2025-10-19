@@ -4,6 +4,7 @@ import { Agent, AgentConfig, ChatResponse } from '../types/agent';
 import { Message } from '../types';
 import { geogebraTools } from '../services/geogebra-tools';
 import { geogebraService } from '../services/geogebra-service';
+import { ToolLoopExecutor } from '../utils/tool-loop-executor';
 import logger from '../utils/logger';
 
 /**
@@ -18,6 +19,7 @@ import logger from '../utils/logger';
 export class MathTutorAgent extends Agent {
   private model: any;
   private currentAIConfig: any;
+  private toolLoopExecutor: ToolLoopExecutor;
 
   constructor() {
     const config: AgentConfig = {
@@ -102,6 +104,14 @@ export class MathTutorAgent extends Agent {
       enabled: true,
     };
     super(config);
+
+    // 初始化工具循环执行器
+    this.toolLoopExecutor = new ToolLoopExecutor({
+      systemPrompt: config.systemPrompt,
+      toolExecutor: geogebraService,
+      agentName: '数学教学助手',
+      maxIterations: 5,
+    });
   }
 
   getTools() {
@@ -147,128 +157,7 @@ export class MathTutorAgent extends Agent {
       this.currentAIConfig = aiConfig;
     }
 
-    try {
-      let conversationMessages = [
-        { role: 'system', content: this.config.systemPrompt },
-        ...messages.map(msg => ({
-          role: msg.role,
-          content: msg.content,
-        })),
-      ];
-
-      const allToolCalls: any[] = [];
-      const maxIterations = 5;
-      let iteration = 0;
-
-      logger.info('🎓 数学教学助手开始对话循环');
-
-      while (iteration < maxIterations) {
-        iteration++;
-        logger.info(`🔄 数学教学助手循环 ${iteration}/${maxIterations}`);
-
-        const response = await this.model.invoke(conversationMessages);
-
-        const toolCalls = ((response as any).tool_calls || []).map((tc: any) => ({
-          id: tc.id || `tool-${Date.now()}-${Math.random()}`,
-          type: 'geogebra' as const,
-          tool: tc.name,
-          parameters: tc.args,
-        }));
-
-        logger.info(`✅ 数学教学助手响应 [${iteration}]`, {
-          hasContent: !!response.content,
-          toolCallsCount: toolCalls.length,
-        });
-
-        if (response.content && toolCalls.length === 0) {
-          logger.info('✅ 数学教学助手对话完成（有内容，无工具调用）');
-
-          const responseMessage: Message = {
-            id: (response as any).id || crypto.randomUUID(),
-            role: 'assistant',
-            content: typeof response.content === 'string' ? response.content : '',
-            timestamp: new Date(),
-          };
-
-          return {
-            message: responseMessage,
-            toolCalls: allToolCalls,
-          };
-        }
-
-        if (toolCalls.length === 0) {
-          logger.info('✅ 数学教学助手对话完成（无工具调用）');
-
-          const responseMessage: Message = {
-            id: (response as any).id || crypto.randomUUID(),
-            role: 'assistant',
-            content: typeof response.content === 'string' ? response.content : '操作已完成',
-            timestamp: new Date(),
-          };
-
-          return {
-            message: responseMessage,
-            toolCalls: allToolCalls,
-          };
-        }
-
-        const toolResults = [];
-        for (const toolCall of toolCalls) {
-          try {
-            logger.info(`🔧 数学教学助手执行工具 [${iteration}]: ${toolCall.tool}`, toolCall.parameters);
-            const geogebraResult = await geogebraService.executeTool(toolCall);
-            toolResults.push({
-              tool_call_id: toolCall.id,
-              output: 'success',
-            });
-            allToolCalls.push({
-              ...toolCall,
-              result: geogebraResult,
-            });
-            logger.info(`✅ 数学教学助手工具成功 [${iteration}]: ${toolCall.tool}`);
-          } catch (error) {
-            logger.error(`❌ 数学教学助手工具失败 [${iteration}]: ${toolCall.tool}`, error);
-            toolResults.push({
-              tool_call_id: toolCall.id,
-              output: `error: ${error}`,
-            });
-            allToolCalls.push({
-              ...toolCall,
-              result: { success: false, error: String(error) },
-            });
-          }
-        }
-
-        conversationMessages.push({
-          role: 'assistant',
-          content: response.content || '',
-          tool_calls: (response as any).tool_calls,
-        } as any);
-
-        conversationMessages.push({
-          role: 'tool',
-          content: JSON.stringify(toolResults),
-          tool_call_id: toolResults[0]?.tool_call_id,
-        } as any);
-      }
-
-      logger.warn('⚠️ 数学教学助手达到最大迭代次数');
-
-      const responseMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: '已完成所有操作',
-        timestamp: new Date(),
-      };
-
-      return {
-        message: responseMessage,
-        toolCalls: allToolCalls,
-      };
-
-    } catch (error) {
-      logger.error('❌ 数学教学助手处理失败', error);
-      throw error;
-    }
+    // 使用工具循环执行器处理整个对话流程
+    return await this.toolLoopExecutor.execute(this.model, messages);
   }
 }

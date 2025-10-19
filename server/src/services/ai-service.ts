@@ -4,17 +4,32 @@ import logger from '../utils/logger';
 import { AIConfig, Message } from '../types';
 import { geogebraTools } from './geogebra-tools';
 import { geogebraService } from './geogebra-service';
+import { ToolLoopExecutor } from '../utils/tool-loop-executor';
 
 export class AIService {
   private model: any;
+  private toolLoopExecutor: ToolLoopExecutor;
 
   constructor(private config: AIConfig) {
     this.model = this.createModelInstance();
+    this.toolLoopExecutor = new ToolLoopExecutor({
+      systemPrompt: this.getSystemPrompt(),
+      toolExecutor: geogebraService,
+      agentName: 'AI Service',
+      maxIterations: 5,
+    });
   }
 
   updateConfig(newConfig: AIConfig) {
     this.config = newConfig;
     this.model = this.createModelInstance();
+    // 更新工具循环执行器的系统提示
+    this.toolLoopExecutor = new ToolLoopExecutor({
+      systemPrompt: this.getSystemPrompt(),
+      toolExecutor: geogebraService,
+      agentName: 'AI Service',
+      maxIterations: 5,
+    });
   }
 
   private createModelInstance() {
@@ -64,145 +79,8 @@ export class AIService {
   }
 
   async chat(messages: Message[]): Promise<{ message: Message; toolCalls: any[] }> {
-    try {
-      // 添加系统提示
-      let conversationMessages = [
-        { role: 'system', content: this.getSystemPrompt() },
-        ...messages.map(msg => ({
-          role: msg.role,
-          content: msg.content,
-        })),
-      ];
-
-      const allToolCalls: any[] = [];
-      const maxIterations = 5;
-      let iteration = 0;
-
-      logger.info('🚀 开始对话循环', {
-        initialMessageCount: conversationMessages.length,
-      });
-
-      while (iteration < maxIterations) {
-        iteration++;
-        
-        logger.info(`🔄 循环 ${iteration}/${maxIterations}`, {
-          messageCount: conversationMessages.length,
-        });
-
-        // 调用模型
-        const response = await this.model.invoke(conversationMessages);
-        
-        // 提取工具调用
-        const toolCalls = ((response as any).tool_calls || []).map((tc: any) => ({
-          id: tc.id || `tool-${Date.now()}-${Math.random()}`,
-          type: 'geogebra' as const,
-          tool: tc.name,
-          parameters: tc.args,
-        }));
-
-        logger.info(`✅ 模型响应 [${iteration}]`, {
-          hasContent: !!response.content,
-          toolCallsCount: toolCalls.length,
-        });
-
-        // 如果有内容但没有工具调用，结束循环
-        if (response.content && toolCalls.length === 0) {
-          logger.info('✅ 对话完成（有内容，无工具调用）');
-          
-          const responseMessage: Message = {
-            id: (response as any).id || crypto.randomUUID(),
-            role: 'assistant',
-            content: typeof response.content === 'string' ? response.content : '',
-            timestamp: new Date(),
-          };
-
-          return {
-            message: responseMessage,
-            toolCalls: allToolCalls,
-          };
-        }
-
-        // 如果没有工具调用也没有内容，结束
-        if (toolCalls.length === 0) {
-          logger.info('✅ 对话完成（无工具调用）');
-          
-          const responseMessage: Message = {
-            id: (response as any).id || crypto.randomUUID(),
-            role: 'assistant',
-            content: typeof response.content === 'string' ? response.content : '操作已完成',
-            timestamp: new Date(),
-          };
-
-          return {
-            message: responseMessage,
-            toolCalls: allToolCalls,
-          };
-        }
-
-        // 执行工具调用
-        const toolResults = [];
-        for (const toolCall of toolCalls) {
-          try {
-            logger.info(`🔧 执行工具 [${iteration}]: ${toolCall.tool}`, toolCall.parameters);
-            const geogebraResult = await geogebraService.executeTool(toolCall);
-            toolResults.push({
-              tool_call_id: toolCall.id,
-              output: 'success',
-            });
-            allToolCalls.push({
-              ...toolCall,
-              result: geogebraResult, // 保存完整的结果（包含 command）
-            });
-            logger.info(`✅ 工具成功 [${iteration}]: ${toolCall.tool}`);
-          } catch (error) {
-            logger.error(`❌ 工具失败 [${iteration}]: ${toolCall.tool}`, error);
-            toolResults.push({
-              tool_call_id: toolCall.id,
-              output: `error: ${error}`,
-            });
-            allToolCalls.push({
-              ...toolCall,
-              result: { success: false, error: String(error) },
-            });
-          }
-        }
-
-        // 添加助手消息（带工具调用）和工具结果到对话
-        conversationMessages.push({
-          role: 'assistant',
-          content: response.content || '',
-          tool_calls: (response as any).tool_calls,
-        } as any);
-
-        conversationMessages.push({
-          role: 'tool',
-          content: JSON.stringify(toolResults),
-          tool_call_id: toolResults[0]?.tool_call_id,
-        } as any);
-      }
-
-      // 达到最大迭代次数
-      logger.warn('⚠️ 达到最大迭代次数');
-      
-      const responseMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: '已完成所有可视化操作',
-        timestamp: new Date(),
-      };
-
-      return {
-        message: responseMessage,
-        toolCalls: allToolCalls,
-      };
-
-    } catch (error: any) {
-      logger.error('❌ AI 聊天失败', {
-        message: error.message,
-        name: error.name,
-      });
-      throw error;
-    }
+    // 使用工具循环执行器处理整个对话流程
+    return await this.toolLoopExecutor.execute(this.model, messages);
   }
 
   private getSystemPrompt(): string {
