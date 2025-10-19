@@ -33,60 +33,87 @@ export class AIService {
     throw new Error(`不支持的 AI 提供商: ${this.config.provider}`);
   }
 
-  private zodToOpenAISchema(zodSchema: any): any {
-    // 手动从 Zod schema 提取信息并转换为 OpenAI 格式
-    const shape = zodSchema._def.shape();
-    const properties: any = {};
-    const required: string[] = [];
-
-    for (const [key, value] of Object.entries(shape)) {
-      const zodField: any = value;
-      const fieldDef: any = {
-        type: this.getJsonType(zodField),
-      };
-
-      // 提取描述
-      if (zodField._def.description) {
-        fieldDef.description = zodField._def.description;
-      }
-
-      // 处理数组类型
-      if (zodField._def.typeName === 'ZodArray') {
-        fieldDef.type = 'array';
-        fieldDef.items = { type: this.getJsonType(zodField._def.type) };
-      }
-
-      properties[key] = fieldDef;
-
-      // 检查是否必填
-      if (!zodField.isOptional()) {
-        required.push(key);
-      }
+  // 将 Zod v4 schema 转换为 OpenAI JSON Schema 格式
+  private zodToOpenAIParameters(schema: any): any {
+    // Zod v4 使用 'def' 而不是 '_def'
+    const def = schema.def || schema._def;
+    
+    if (!def) {
+      logger.warn('无法访问 schema 定义', { schema });
+      return { type: 'object', properties: {}, required: [] };
     }
 
-    return {
-      type: 'object',
-      properties,
-      required,
-    };
+    // 处理 object 类型
+    if (def.type === 'object' && def.shape) {
+      const properties: any = {};
+      const required: string[] = [];
+
+      for (const [key, fieldSchema] of Object.entries(def.shape)) {
+        const field: any = fieldSchema;
+        properties[key] = this.zodFieldToJsonSchema(field);
+        
+        // 检查是否为必填字段
+        if (!field.isOptional || !field.isOptional()) {
+          required.push(key);
+        }
+      }
+
+      return {
+        type: 'object',
+        properties,
+        required,
+      };
+    }
+
+    return { type: 'object', properties: {}, required: [] };
   }
 
-  private getJsonType(zodType: any): string {
-    const typeName = zodType._def.typeName;
-    switch (typeName) {
-      case 'ZodString':
-        return 'string';
-      case 'ZodNumber':
-        return 'number';
-      case 'ZodBoolean':
-        return 'boolean';
-      case 'ZodArray':
-        return 'array';
-      case 'ZodObject':
-        return 'object';
-      default:
-        return 'string';
+  // 将单个 Zod 字段转换为 JSON Schema
+  private zodFieldToJsonSchema(field: any): any {
+    const def = field.def || field._def;
+    const result: any = {};
+
+    // 提取描述（Zod v4 可能在 def 或元数据中）
+    if (def.description) {
+      result.description = def.description;
     }
+
+    // 处理类型
+    const fieldType = field.type || def.type;
+
+    switch (fieldType) {
+      case 'string':
+        result.type = 'string';
+        break;
+      case 'number':
+        result.type = 'number';
+        break;
+      case 'boolean':
+        result.type = 'boolean';
+        break;
+      case 'array':
+        result.type = 'array';
+        if (def.type && typeof def.type === 'object') {
+          result.items = this.zodFieldToJsonSchema(def.type);
+        } else {
+          result.items = { type: 'string' };
+        }
+        break;
+      case 'object':
+        result.type = 'object';
+        if (def.shape) {
+          result.properties = {};
+          for (const [key, value] of Object.entries(def.shape)) {
+            result.properties[key] = this.zodFieldToJsonSchema(value as any);
+          }
+        }
+        break;
+      default:
+        // 默认为 string
+        result.type = 'string';
+    }
+
+    return result;
   }
 
   private getToolDefinitions() {
@@ -95,8 +122,8 @@ export class AIService {
     for (const t of geogebraTools) {
       logger.info(`创建工具定义: ${t.name}`);
 
-      // 手动转换 Zod schema 为 JSON Schema
-      const parameters = this.zodToOpenAISchema(t.parameters);
+      // 使用 Zod v4 兼容的转换方法
+      const parameters = this.zodToOpenAIParameters(t.parameters);
       
       // 构建符合 OpenAI 格式的工具定义
       const toolDef = {
