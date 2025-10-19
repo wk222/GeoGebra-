@@ -144,14 +144,14 @@ export class AIService {
         for (const toolCall of toolCalls) {
           try {
             logger.info(`🔧 执行工具 [${iteration}]: ${toolCall.tool}`, toolCall.parameters);
-            await geogebraService.executeTool(toolCall);
+            const geogebraResult = await geogebraService.executeTool(toolCall);
             toolResults.push({
               tool_call_id: toolCall.id,
               output: 'success',
             });
             allToolCalls.push({
               ...toolCall,
-              result: { success: true },
+              result: geogebraResult, // 保存完整的结果（包含 command）
             });
             logger.info(`✅ 工具成功 [${iteration}]: ${toolCall.tool}`);
           } catch (error) {
