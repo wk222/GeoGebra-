@@ -1,4 +1,4 @@
-import { generateText, tool } from 'ai';
+import { generateText, tool, jsonSchema } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -34,16 +34,17 @@ export class AIService {
 
       // 使用 zodToJsonSchema 将 Zod schema 转换为 JSON Schema
       // 这对于自定义 API provider 是必需的
-      const jsonSchema = zodToJsonSchema(t.parameters, { $refStrategy: 'none' });
+      const convertedSchema = zodToJsonSchema(t.parameters, { $refStrategy: 'none' });
       
-      // 移除顶层的 $schema 和 definitions 字段
-      const { $schema, definitions, additionalProperties, ...schema } = jsonSchema as any;
+      // 移除顶层的 $schema 和 definitions 字段，只保留核心的 object schema
+      const { $schema, definitions, ...coreSchema } = convertedSchema as any;
       
-      logger.info(`工具 ${t.name} 的 schema:`, JSON.stringify(schema, null, 2));
+      logger.info(`工具 ${t.name} 的 schema:`, JSON.stringify(coreSchema, null, 2));
 
+      // 使用 jsonSchema() 包装转换后的 JSON Schema
       tools[t.name] = tool({
         description: t.description,
-        parameters: t.parameters,
+        parameters: jsonSchema(coreSchema),
       } as any);
     }
     
