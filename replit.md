@@ -35,7 +35,7 @@ This is a monorepo with frontend and backend:
 **Development:**
 - **Frontend (Vite)**: Port 5000 (configured for Replit webview)
   - Host: 0.0.0.0
-  - AllowedHosts: ['all'] to support Replit proxy
+  - AllowedHosts: true (to support Replit proxy)
 - **Backend (Express)**: Port 3001 (localhost only)
   - Host: localhost (default)
 
@@ -131,7 +131,7 @@ API keys are stored in browser localStorage for convenience and security.
 ## Recent Changes
 - **2025-10-19**: Initial Replit setup
   - Configured Vite to use port 5000 with host 0.0.0.0
-  - Added allowedHosts configuration for Replit proxy support
+  - Added allowedHosts: true configuration for Replit proxy support
   - Created workflow to run both frontend and backend in development
   - Updated server to serve static files in production mode
   - Configured production server to use port 5000 when NODE_ENV=production
