@@ -26,20 +26,13 @@ export class AIService {
   }
 
   private getTools() {
-    // 直接使用标准 JSON Schema，不做任何转换
     const tools: Record<string, any> = {};
     
     for (const t of geogebraTools) {
-      logger.info(`工具 ${t.name} 的 parameters:`, JSON.stringify(t.parameters, null, 2));
+      logger.info(`创建工具: ${t.name}`);
 
-      const schemaDefinition = {
-        type: 'object',
-        properties: t.parameters?.properties || {},
-        required: t.parameters?.required || [],
-        additionalProperties: t.parameters?.additionalProperties ?? false,
-      };
-
-      const schema = jsonSchema(schemaDefinition as any);
+      // 直接传递 t.parameters 到 jsonSchema，不要重构
+      const schema = jsonSchema(t.parameters as any);
 
       tools[t.name] = tool({
         description: t.description,
