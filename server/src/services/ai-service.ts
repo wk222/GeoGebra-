@@ -9,6 +9,10 @@ import { v4 as uuidv4 } from 'uuid';
 export class AIService {
   constructor(private config: AIConfig) {}
 
+  updateConfig(newConfig: AIConfig) {
+    this.config = newConfig;
+  }
+
   private getModel() {
     if (this.config.provider === 'openai' || this.config.provider === 'custom') {
       return new ChatOpenAI({
@@ -60,7 +64,7 @@ export class AIService {
         }
       };
       
-      logger.info(`工具 ${t.name} 的定义:`, JSON.stringify(toolDef, null, 2));
+      logger.info(`工具 ${t.name} 的定义: ${JSON.stringify(toolDef, null, 2)}`);
       toolDefs.push(toolDef);
     }
     
